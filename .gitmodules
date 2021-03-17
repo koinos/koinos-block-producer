@@ -1,0 +1,18 @@
+[submodule "libraries/koinos-log-cpp"]
+	path = libraries/log
+	url = git@github.com:koinos/koinos-log-cpp.git
+[submodule "libraries/koinos-util-cpp"]
+	path = libraries/util
+	url = git@github.com:koinos/koinos-util-cpp.git
+[submodule "libraries/koinos-types"]
+	path = libraries/types
+	url = git@github.com:koinos/koinos-types.git
+[submodule "libraries/koinos-exception-cpp"]
+	path = libraries/exception
+	url = git@github.com:koinos/koinos-exception-cpp.git
+[submodule "libraries/koinos-crypto-cpp"]
+	path = libraries/crypto
+	url = git@github.com:koinos/koinos-crypto-cpp.git
+[submodule "libraries/koinos-mq-cpp"]
+	path = libraries/mq
+	url = git@github.com:koinos/koinos-mq-cpp.git
