@@ -35,7 +35,7 @@ HunterGate(
    LOCAL
 )
 
-project(koinos VERSION 0.1.0 LANGUAGES CXX C)
+project(koinos_block_producer VERSION 0.1.0 LANGUAGES CXX C)
 
 option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." OFF)
 
@@ -68,22 +68,22 @@ if(${CMAKE_GENERATOR} MATCHES "Xcode")
   set(CMAKE_XCODE_GENERATE_SCHEME YES)
 endif()
 
-if(COVERAGE)
-  include(CodeCoverage)
-  append_coverage_compiler_flags()
-  setup_target_for_coverage_lcov(
-     NAME coverage
-     LCOV_ARGS "--quiet" "--no-external"
-     EXECUTABLE koinos_tests
-     EXCLUDE
-        "build/*"
-        "libraries/crypto/*"
-        "libraries/exception/*"
-        "libraries/log/*"
-        "libraries/types/*"
-        "libraries/util/*"
-        "libraries/vendor/*")
-endif()
+#if(COVERAGE)
+#  include(CodeCoverage)
+#  append_coverage_compiler_flags()
+#  setup_target_for_coverage_lcov(
+#     NAME coverage
+#     LCOV_ARGS "--quiet" "--no-external"
+#     EXECUTABLE koinos_tests
+#     EXCLUDE
+#        "build/*"
+#        "libraries/crypto/*"
+#        "libraries/exception/*"
+#        "libraries/log/*"
+#        "libraries/types/*"
+#        "libraries/util/*"
+#        "libraries/vendor/*")
+#endif()
 
 hunter_add_package(Boost COMPONENTS system log thread date_time filesystem chrono locale test program_options)
 hunter_add_package(libsecp256k1)
