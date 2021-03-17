@@ -1,0 +1,38 @@
+language: c++
+
+cache:
+  ccache: true
+  pip: true
+
+addons:
+  apt:
+    packages:
+      - python3
+      - python3-pip
+      - python3-setuptools
+    update: true
+
+jobs:
+  include:
+    - os: linux
+      dist: focal
+      env:
+        - MATRIX_EVAL="CC=gcc && CXX=g++"
+    - os: linux
+      dist: focal
+      env:
+        - MATRIX_EVAL="CC=clang-11 && CXX=clang++-11"
+
+before_install:
+  eval "${MATRIX_EVAL}"
+
+install:
+  - ci/install.sh
+
+script:
+  - ci/build.sh
+
+notifications:
+  slack:
+    secure: ILGZYlZLDN5DxShH8znBeX8klW6IS6l1YWoZspGI776d5/7Ye007tksVji+MYJ1VZW1Au7r4d44aNBVAX+YjZivS1SC/5sEu2GalhULNrjx1No1maUMr2eqx6aoZku0UyhnfiI+kzKE3dv2Yadf/DQzzggXyU+Du9BiP8+xWV8rmlIlgYmaPcaBTGOTIp3kFd1FsV6X42rB6SJk47g/uaVukZ5+B2t3WC9y5y+vBfGw+q6K2MRXLqoOlaKIvfxCUTpATEE1LhkRRISO7/XfEyMbZWMYf/YUCS91c6EAsn0APuCnmNvpzxySGu9Bn77fPXDjgCeJmKJsuOmp5c/WFNJGyZx4Qoy9ZSpLs5fJa9p+t0RK2IMlCvzk0RwaBWeNN37ujnrQ21d7LopVsqDbzGMl5DNXTbX/sLUJ+tPmjfeXQcxuKkzeqd1BPLKOjMuzMwUX6v1ard+7PiqEyPOjruUFYI5DATRR2wUlxgc5eIUOCd0e/nUqFlUKFQwnRp0Mz361uPGGoQF6cLPL+NjBcXIHGcCh1G++CBdStNk5kcKRGgcLfM5zcaPaFl87yMPJSazpowo88rWWDi6fZsbtiPt3Y/sSX5+2+0P3XAK4p9Fuhfv9532PuSco57TxeCEuZ6bTTitlVkoTtfPvZFmK4SuF206GoFvbOSR+DImv5VZs=
+    on_success: never
