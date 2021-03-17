@@ -65,9 +65,9 @@ void sign_block( protocol::block& block, crypto::private_key& block_signing_key 
 static timestamp_type timestamp_now()
 {
    return timestamp_type{
-      std::chrono::duration_cast< std::chrono::milliseconds >(
+      uint64_t( std::chrono::duration_cast< std::chrono::milliseconds >(
          std::chrono::system_clock::now().time_since_epoch()
-      ).count()
+      ).count() )
    };
 }
 
