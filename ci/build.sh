@@ -6,5 +6,5 @@ set -x
 mkdir build
 cd build
 
-cmake -DCMAKE_BUILD_TYPE=Debug -DCOVERAGE=ON ..
+cmake -DCMAKE_BUILD_TYPE=Debug ..
 cmake --build . --config Debug --parallel 3 --target coverage
