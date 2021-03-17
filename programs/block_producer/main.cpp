@@ -1,6 +1,8 @@
 
 #include <block_producer.hpp>
 
+#include <boost/asio.hpp>
+#include <boost/asio/signal_set.hpp>
 #include <boost/program_options.hpp>
 
 #include <koinos/exception.hpp>
@@ -29,16 +31,16 @@ int main( int argc, char** argv )
       LOG(info) << "Starting block producer...";
       producer.start();
 
-      sigset_t signal_set;
-      sigemptyset( &signal_set );
-      sigaddset( &signal_set, SIGABRT);
-      sigaddset( &signal_set, SIGINT);
-      sigaddset( &signal_set, SIGTERM);
+      boost::asio::io_service io_service;
+      boost::asio::signal_set signals( io_service, SIGINT, SIGTERM );
 
-      int sig;
-      sigwait( &signal_set, &sig );
-      LOG(info) << "Caught signal, shutting down...";
-      producer.stop();
+      signals.async_wait( [&]( const boost::system::error_code& err, int num )
+      {
+         LOG(info) << "Caught signal, shutting down...";
+         producer.stop();
+      } );
+
+      io_service.run();
    }
    catch ( const boost::exception& e )
    {
