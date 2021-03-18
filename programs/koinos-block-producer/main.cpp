@@ -1,5 +1,5 @@
 
-#include <block_producer.hpp>
+#include <koinos/block_producer.hpp>
 
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -10,16 +10,19 @@
 #include <csignal>
 #include <iostream>
 
+namespace bpo = boost::program_options;
+
 int main( int argc, char** argv )
 {
    try
    {
-      boost::program_options::options_description options;
+      bpo::options_description options;
       options.add_options()
-         ("help,h", "Print this help message and exit.");
+         ("help,h", "Print this help message and exit.")
+         ("amqp,a", bpo::value<std::string>()->default_value("amqp://guest:guest@localhost:5672/"), "AMQP server URL");
 
-      boost::program_options::variables_map args;
-      boost::program_options::store( boost::program_options::parse_command_line( argc, argv, options ), args );
+      bpo::variables_map args;
+      bpo::store( bpo::parse_command_line( argc, argv, options ), args );
 
       if( args.count( "help" ) )
       {
@@ -27,7 +30,15 @@ int main( int argc, char** argv )
          return EXIT_FAILURE;
       }
 
-      block_producer producer;
+      auto client = std::make_shared< koinos::mq::client >();
+      auto ec = client->connect( args.at( "amqp" ).as< std::string >() );
+      if ( ec != koinos::mq::error_code::success )
+      {
+         LOG(error) << "Unable to connect amqp client";
+         return EXIT_FAILURE;
+      }
+
+      koinos::block_producer producer( client );
       LOG(info) << "Starting block producer...";
       producer.start();
 
