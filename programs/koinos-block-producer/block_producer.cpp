@@ -3,6 +3,7 @@
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
+#include <koinos/util.hpp>
 
 #include <thread>
 
@@ -172,9 +173,28 @@ void block_producer_impl::produce_block()
    // Store hash of header as ID
    block_req.topology.id = crypto::hash( CRYPTO_SHA2_256_ID, block_req.block.active_data );
 
-   // TODO: Send block via MQ
+   j.clear();
+   pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
+   future = _rpc_client->rpc( "chain", j.dump() );
 
-   LOG(info) << "produced block: " << block_req.topology;
+   pack::from_json( nlohmann::json::parse( future.get() ), resp );
+   std::visit(
+      koinos::overloaded {
+         [&]( const rpc::chain::submit_block_response& )
+         {
+            LOG(info) << "produced block: " << block_req.topology;
+         },
+         [&]( const rpc::chain::chain_error_response& e )
+         {
+            LOG(info) << "error producing block: " << e.error_text;
+            LOG(info) << e.error_data;
+         },
+         [&]( const auto& p )
+         {
+            LOG(error) << "unexpected rpc response: " << p;
+         }
+      },
+      resp );
 }
 
 } // detail
