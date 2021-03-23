@@ -155,7 +155,16 @@ void block_producer_impl::produce_block()
    block_req.block.header.height    = head_info.head_topology.height + 1;
    block_req.block.header.timestamp = timestamp_now();
 
-   // TODO: Add transactions from the mempool
+   j.clear();
+   pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::get_pending_transactions_request{ .limit = 100 } } );
+   future = _rpc_client->rpc( mq::service::mempool, j.dump() );
+
+   rpc::mempool::mempool_rpc_response m_resp;
+   pack::from_json( nlohmann::json::parse( future.get() ), m_resp );
+   auto mempool = std::get< rpc::mempool::get_pending_transactions_response >( m_resp );
+
+   // TODO: Limit transaction inclusion via block size
+   block_req.block.transactions.insert( block_req.block.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
 
    block_req.block.passive_data = protocol::passive_block_data();
    block_req.block.active_data = protocol::active_block_data();
