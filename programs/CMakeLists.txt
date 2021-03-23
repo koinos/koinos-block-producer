@@ -1,1 +1,1 @@
-add_subdirectory(koinos-block-producer)
+add_subdirectory(koinos_block_producer)
