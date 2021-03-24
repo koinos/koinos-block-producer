@@ -2,6 +2,7 @@
 
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
+#include <koinos/mq/util.hpp>
 #include <koinos/pack/classes.hpp>
 #include <koinos/util.hpp>
 
@@ -41,9 +42,9 @@ void set_block_merkle_roots( protocol::block& block, uint64_t code, uint64_t siz
    // Hash transaction actives, passives, and signatures for merkle roots
    for ( size_t i = 0; i < block.transactions.size(); i++ )
    {
-      trx_active_hashes[i]      = crypto::hash(      code, block.transactions[i]->active_data,    size );
-      passive_hashes[2*(i+1)]   = crypto::hash(      code, block.transactions[i]->passive_data,   size );
-      passive_hashes[2*(i+1)+1] = crypto::hash_blob( code, block.transactions[i]->signature_data, size );
+      trx_active_hashes[i]      = crypto::hash(      code, block.transactions[i].active_data,    size );
+      passive_hashes[2*(i+1)]   = crypto::hash(      code, block.transactions[i].passive_data,   size );
+      passive_hashes[2*(i+1)+1] = crypto::hash_blob( code, block.transactions[i].signature_data, size );
    }
 
    crypto::merkle_hash_leaves( trx_active_hashes, code, size );
@@ -141,48 +142,40 @@ void block_producer_impl::produce_block()
    block_req.verify_block_signature = true;
    block_req.verify_transaction_signatures = true;
 
-   // Make active data, fetch timestamp
-   protocol::active_block_data active_data;
-   active_data.timestamp = timestamp_now();
-
-   // TODO: Get head info via RPC
    nlohmann::json j;
    pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::get_head_info_request{} } );
-   auto future = _rpc_client->rpc( "chain", j.dump() );
+   auto future = _rpc_client->rpc( mq::service::chain, j.dump() );
 
    rpc::chain::chain_rpc_response resp;
    pack::from_json( nlohmann::json::parse( future.get() ), resp );
    auto head_info = std::get< rpc::chain::get_head_info_response >( resp );
 
-   active_data.height = head_info.height + 1;
-   active_data.previous_block = head_info.id;
-   block_req.topology.previous = head_info.id;
-   block_req.topology.height = active_data.height;
+   // Initialize header
+   block_req.block.header.previous  = head_info.head_topology.id;
+   block_req.block.header.height    = head_info.head_topology.height + 1;
+   block_req.block.header.timestamp = timestamp_now();
 
    // TODO: Add transactions from the mempool
 
-   // Add passive data
    block_req.block.passive_data = protocol::passive_block_data();
-
-   // Serialize active data, store it in block header
-   block_req.block.active_data = std::move( active_data );
+   block_req.block.active_data = protocol::active_block_data();
 
    set_block_merkle_roots( block_req.block, CRYPTO_SHA2_256_ID );
    sign_block( block_req.block, _block_signing_key );
 
-   // Store hash of header as ID
-   block_req.topology.id = crypto::hash( CRYPTO_SHA2_256_ID, block_req.block.active_data );
+   // Store hash of header and active as ID
+   block_req.block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block_req.block.header, block_req.block.active_data );
 
    j.clear();
    pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
-   future = _rpc_client->rpc( "chain", j.dump() );
+   future = _rpc_client->rpc( mq::service::chain, j.dump() );
 
    pack::from_json( nlohmann::json::parse( future.get() ), resp );
    std::visit(
       koinos::overloaded {
          [&]( const rpc::chain::submit_block_response& )
          {
-            LOG(info) << "produced block: " << block_req.topology;
+            LOG(info) << "produced block: " << block_req.block.header;
          },
          [&]( const rpc::chain::chain_error_response& e )
          {
