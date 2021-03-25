@@ -185,16 +185,16 @@ void block_producer_impl::produce_block()
          koinos::overloaded {
             [&]( const rpc::chain::submit_block_response& )
             {
-               LOG(info) << "produced block: " << block_req.block.header;
+               LOG(info) << "Produced block: " << block_req.block.header;
             },
             [&]( const rpc::chain::chain_error_response& e )
             {
-               LOG(info) << "error producing block: " << e.error_text;
+               LOG(info) << "Error producing block: " << e.error_text;
                LOG(info) << e.error_data;
             },
             [&]( const auto& p )
             {
-               LOG(error) << "unexpected rpc response: " << p;
+               LOG(error) << "Unexpected RPC response: " << p;
             }
       }, resp );
    }
