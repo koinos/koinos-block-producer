@@ -58,9 +58,7 @@ void sign_block( protocol::block& block, crypto::private_key& block_signing_key 
 {
    pack::to_variable_blob(
       block.signature_data,
-      block_signing_key.sign_compact(
-         crypto::hash( CRYPTO_SHA2_256_ID, block.active_data )
-      )
+      block_signing_key.sign_compact( block.id )
    );
 }
 
@@ -136,67 +134,74 @@ void block_producer_impl::stop()
 
 void block_producer_impl::produce_block()
 {
-   // Make block header
-   rpc::chain::submit_block_request block_req;
-   block_req.verify_passive_data = true;
-   block_req.verify_block_signature = true;
-   block_req.verify_transaction_signatures = true;
+   try
+   {
+      // Make block header
+      rpc::chain::submit_block_request block_req;
+      block_req.verify_passive_data = true;
+      block_req.verify_block_signature = true;
+      block_req.verify_transaction_signatures = true;
 
-   nlohmann::json j;
-   pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::get_head_info_request{} } );
-   auto future = _rpc_client->rpc( mq::service::chain, j.dump() );
+      nlohmann::json j;
+      pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::get_head_info_request{} } );
+      auto future = _rpc_client->rpc( mq::service::chain, j.dump(), "application/json", 0  );
 
-   rpc::chain::chain_rpc_response resp;
-   pack::from_json( nlohmann::json::parse( future.get() ), resp );
-   auto head_info = std::get< rpc::chain::get_head_info_response >( resp );
+      rpc::chain::chain_rpc_response resp;
+      pack::from_json( nlohmann::json::parse( future.get() ), resp );
+      auto head_info = std::get< rpc::chain::get_head_info_response >( resp );
 
-   // Initialize header
-   block_req.block.header.previous  = head_info.head_topology.id;
-   block_req.block.header.height    = head_info.head_topology.height + 1;
-   block_req.block.header.timestamp = timestamp_now();
+      // Initialize header
+      block_req.block.header.previous  = head_info.head_topology.id;
+      block_req.block.header.height    = head_info.head_topology.height + 1;
+      block_req.block.header.timestamp = timestamp_now();
 
-   j.clear();
-   pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::get_pending_transactions_request{ .limit = 100 } } );
-   future = _rpc_client->rpc( mq::service::mempool, j.dump() );
+      j.clear();
+      pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::get_pending_transactions_request{ .limit = 100 } } );
+      future = _rpc_client->rpc( mq::service::mempool, j.dump(), "application/json", 0  );
 
-   rpc::mempool::mempool_rpc_response m_resp;
-   pack::from_json( nlohmann::json::parse( future.get() ), m_resp );
-   auto mempool = std::get< rpc::mempool::get_pending_transactions_response >( m_resp );
+      rpc::mempool::mempool_rpc_response m_resp;
+      pack::from_json( nlohmann::json::parse( future.get() ), m_resp );
+      auto mempool = std::get< rpc::mempool::get_pending_transactions_response >( m_resp );
 
-   // TODO: Limit transaction inclusion via block size
-   block_req.block.transactions.insert( block_req.block.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
+      // TODO: Limit transaction inclusion via block size
+      block_req.block.transactions.insert( block_req.block.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
 
-   block_req.block.passive_data = protocol::passive_block_data();
-   block_req.block.active_data = protocol::active_block_data();
+      block_req.block.passive_data = protocol::passive_block_data();
+      block_req.block.active_data = protocol::active_block_data();
 
-   set_block_merkle_roots( block_req.block, CRYPTO_SHA2_256_ID );
-   sign_block( block_req.block, _block_signing_key );
+      set_block_merkle_roots( block_req.block, CRYPTO_SHA2_256_ID );
 
-   // Store hash of header and active as ID
-   block_req.block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block_req.block.header, block_req.block.active_data );
+      // Store hash of header and active as ID
+      block_req.block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block_req.block.header, block_req.block.active_data );
 
-   j.clear();
-   pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
-   future = _rpc_client->rpc( mq::service::chain, j.dump() );
+      sign_block( block_req.block, _block_signing_key );
 
-   pack::from_json( nlohmann::json::parse( future.get() ), resp );
-   std::visit(
-      koinos::overloaded {
-         [&]( const rpc::chain::submit_block_response& )
-         {
-            LOG(info) << "produced block: " << block_req.block.header;
-         },
-         [&]( const rpc::chain::chain_error_response& e )
-         {
-            LOG(info) << "error producing block: " << e.error_text;
-            LOG(info) << e.error_data;
-         },
-         [&]( const auto& p )
-         {
-            LOG(error) << "unexpected rpc response: " << p;
-         }
-      },
-      resp );
+      j.clear();
+      pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
+      future = _rpc_client->rpc( mq::service::chain, j.dump(), "application/json", 0 );
+
+      pack::from_json( nlohmann::json::parse( future.get() ), resp );
+      std::visit(
+         koinos::overloaded {
+            [&]( const rpc::chain::submit_block_response& )
+            {
+               LOG(info) << "produced block: " << block_req.block.header;
+            },
+            [&]( const rpc::chain::chain_error_response& e )
+            {
+               LOG(info) << "error producing block: " << e.error_text;
+               LOG(info) << e.error_data;
+            },
+            [&]( const auto& p )
+            {
+               LOG(error) << "unexpected rpc response: " << p;
+            }
+      }, resp );
+   }
+   catch ( const std::exception& e )
+   {
+      LOG(error) << e.what();
+   }
 }
 
 } // detail
