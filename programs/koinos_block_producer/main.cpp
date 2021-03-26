@@ -52,12 +52,12 @@ int main( int argc, char** argv )
          return EXIT_FAILURE;
       }
 
-      koinos::block_producer producer( client );
+      boost::asio::io_context io_context;
+      koinos::block_producer producer( io_context, client );
       LOG(info) << "Starting block producer...";
       producer.start();
 
-      boost::asio::io_service io_service;
-      boost::asio::signal_set signals( io_service, SIGINT, SIGTERM );
+      boost::asio::signal_set signals( io_context, SIGINT, SIGTERM );
 
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
@@ -65,7 +65,7 @@ int main( int argc, char** argv )
          producer.stop();
       } );
 
-      io_service.run();
+      io_context.run();
    }
    catch ( const boost::exception& e )
    {

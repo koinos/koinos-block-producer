@@ -8,7 +8,7 @@
 
 #include <thread>
 
-#define KOINOS_BLOCK_TIME_MS 10000
+#define KOINOS_BLOCK_TIME_MS 5000
 
 namespace koinos {
 
@@ -75,22 +75,28 @@ namespace detail {
 
 struct block_producer_impl
 {
-   block_producer_impl( std::shared_ptr< mq::client > rpc_client );
+   block_producer_impl( boost::asio::io_context& ioc, std::shared_ptr< mq::client > rpc_client );
    ~block_producer_impl();
 
    void start();
    void stop();
 
+   void production_loop(const boost::system::error_code& ec);
    void produce_block();
 
-   bool                             _running;
    std::unique_ptr< std::thread >   _main_thread;
    std::shared_ptr< mq::client >    _rpc_client;
    crypto::private_key              _block_signing_key;
+   boost::asio::io_context&         _io_context;
+   boost::posix_time::milliseconds  _production_interval;
+   boost::asio::deadline_timer      _timer;
 };
 
-block_producer_impl::block_producer_impl( std::shared_ptr< mq::client > rpc_client ) :
-   _rpc_client( rpc_client )
+block_producer_impl::block_producer_impl( boost::asio::io_context& ioc, std::shared_ptr< mq::client > rpc_client ) :
+   _rpc_client( rpc_client ),
+   _io_context( ioc ),
+   _production_interval( KOINOS_BLOCK_TIME_MS ),
+   _timer( _io_context, _production_interval )
 {
    // TODO: Get key from cli args/encrypted key file
    std::string seed = "test seed";
@@ -104,31 +110,22 @@ block_producer_impl::~block_producer_impl()
 
 void block_producer_impl::start()
 {
-   if ( !_running )
-   {
-      _running = true;
-      _main_thread = std::make_unique< std::thread >( [&]()
-      {
-         while ( _running )
-         {
-            try
-            {
-               produce_block();
-            } KOINOS_CATCH_AND_LOG(info)
-
-            // Sleep for the block production time
-            std::this_thread::sleep_for( std::chrono::milliseconds( KOINOS_BLOCK_TIME_MS ) );
-         }
-      } );
-   }
+   _timer.async_wait( std::bind( &block_producer_impl::production_loop, this, std::placeholders::_1 ) );
 }
 
 void block_producer_impl::stop()
 {
-   if ( _running )
+   _timer.cancel();
+}
+
+void block_producer_impl::production_loop(const boost::system::error_code& ec)
+{
+   if ( ec != boost::asio::error::operation_aborted )
    {
-      _running = false;
-      _main_thread->join();
+      produce_block();
+
+      _timer.expires_at( _timer.expires_at() + _production_interval );
+      _timer.async_wait( std::bind( &block_producer_impl::production_loop, this, std::placeholders::_1 ) );
    }
 }
 
@@ -206,8 +203,8 @@ void block_producer_impl::produce_block()
 
 } // detail
 
-block_producer::block_producer( std::shared_ptr< mq::client > rpc_client ) :
-   _my( std::make_unique< detail::block_producer_impl >( rpc_client ) )
+block_producer::block_producer( boost::asio::io_context& ioc, std::shared_ptr< mq::client > rpc_client ) :
+   _my( std::make_unique< detail::block_producer_impl >( ioc, rpc_client ) )
 {}
 
 block_producer::~block_producer() {}
