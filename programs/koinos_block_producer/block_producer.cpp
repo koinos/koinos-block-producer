@@ -182,7 +182,7 @@ void block_producer_impl::produce_block()
          koinos::overloaded {
             [&]( const rpc::chain::submit_block_response& )
             {
-               LOG(info) << "Produced Block - Height: " << block_req.block.header.height << ", ID: " << block_req.block.id;
+               LOG(info) << "Produced block - Height: " << block_req.block.header.height << ", ID: " << block_req.block.id;
             },
             [&]( const rpc::chain::chain_error_response& e )
             {
