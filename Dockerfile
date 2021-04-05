@@ -29,4 +29,4 @@ RUN apk update && \
         musl \
         libstdc++
 COPY --from=builder /koinos-block-producer/programs/koinos_block_producer/koinos_block_producer /usr/local/bin
-CMD  /usr/local/bin/koinos_block_producer
+ENTRYPOINT [ "/usr/local/bin/koinos_block_producer" ]
