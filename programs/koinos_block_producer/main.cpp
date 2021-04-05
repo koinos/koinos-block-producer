@@ -8,6 +8,8 @@
 
 #include <koinos/block_producer.hpp>
 #include <koinos/exception.hpp>
+#include <koinos/pack/classes.hpp>
+#include <koinos/pack/rt/json.hpp>
 #include <koinos/util.hpp>
 
 using namespace boost;
@@ -15,6 +17,8 @@ using namespace boost;
 #define HELP_OPTION    "help"
 #define AMQP_OPTION    "amqp"
 #define BASEDIR_OPTION "basedir"
+
+using namespace koinos;
 
 int main( int argc, char** argv )
 {
@@ -24,7 +28,7 @@ int main( int argc, char** argv )
       options.add_options()
          (HELP_OPTION   ",h", "Print this help message and exit.")
          (AMQP_OPTION   ",a", program_options::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
-         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( koinos::get_default_base_directory().string() ), "Koinos base directory");
+         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -41,19 +45,53 @@ int main( int argc, char** argv )
          if( basedir.is_relative() )
             basedir = filesystem::current_path() / basedir;
 
-         koinos::initialize_logging( basedir, "block_producer/%3N.log" );
+         initialize_logging( basedir, "block_producer/%3N.log" );
       }
 
-      auto client = std::make_shared< koinos::mq::client >();
+      auto client = std::make_shared< mq::client >();
       auto ec = client->connect( args.at( AMQP_OPTION ).as< std::string >() );
-      if ( ec != koinos::mq::error_code::success )
+      if ( ec != mq::error_code::success )
       {
          LOG(error) << "Unable to connect AMQP client";
          return EXIT_FAILURE;
       }
 
+      LOG(info) << "Attempting to connect to chain...";
+      bool connected = false;
+      while ( !connected )
+      {
+         KOINOS_TODO("Remove this loop when MQ client retry logic is implemented (koinos-mq-cpp#15)")
+         pack::json j;
+         pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::chain_reserved_request{} } );
+
+         try
+         {
+            client->rpc( mq::service::chain, j.dump() ).get();
+            connected = true;
+            LOG(info) << "Connected";
+         }
+         catch( const mq::timeout_error& ) {}
+      }
+
+      LOG(info) << "Attempting to connect to mempool...";
+      connected = false;
+      while ( !connected )
+      {
+         KOINOS_TODO("Remove this loop when MQ client retry logic is implemented (koinos-mq-cpp#15)")
+         pack::json j;
+         pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::mempool_reserved_request{} } );
+
+         try
+         {
+            client->rpc( mq::service::mempool, j.dump() ).get();
+            connected = true;
+            LOG(info) << "Connected";
+         }
+         catch( const mq::timeout_error& ) {}
+      }
+
       boost::asio::io_context io_context;
-      koinos::block_producer producer( io_context, client );
+      block_producer producer( io_context, client );
       LOG(info) << "Starting block producer...";
       producer.start();
 
