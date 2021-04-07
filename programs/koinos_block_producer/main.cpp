@@ -20,6 +20,8 @@ using namespace boost;
 
 using namespace koinos;
 
+constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
+
 int main( int argc, char** argv )
 {
    try
@@ -49,16 +51,29 @@ int main( int argc, char** argv )
       }
 
       auto client = std::make_shared< mq::client >();
-      auto ec = client->connect( args.at( AMQP_OPTION ).as< std::string >() );
-      if ( ec != mq::error_code::success )
+
+      auto amqp_url = args[ AMQP_OPTION ].as< std::string >();
+      uint32_t amqp_sleep_ms = 1000;
+
+      LOG(info) << "Connecting AMQP client...";
+      while ( true )
       {
-         LOG(error) << "Unable to connect AMQP client";
-         return EXIT_FAILURE;
+         auto ec = client->connect( amqp_url );
+         if ( ec == mq::error_code::success )
+         {
+            LOG(info) << "Connected client to AMQP server";
+            break;
+         }
+         else
+         {
+            LOG(info) << "Failed, trying again in " << amqp_sleep_ms << " ms" ;
+            std::this_thread::sleep_for( std::chrono::milliseconds( amqp_sleep_ms ) );
+            amqp_sleep_ms = std::min( amqp_sleep_ms * 2, MAX_AMQP_CONNECT_SLEEP_MS );
+         }
       }
 
       LOG(info) << "Attempting to connect to chain...";
-      bool connected = false;
-      while ( !connected )
+      while ( true )
       {
          KOINOS_TODO("Remove this loop when MQ client retry logic is implemented (koinos-mq-cpp#15)")
          pack::json j;
@@ -67,15 +82,14 @@ int main( int argc, char** argv )
          try
          {
             client->rpc( mq::service::chain, j.dump() ).get();
-            connected = true;
             LOG(info) << "Connected";
+            break;
          }
          catch( const mq::timeout_error& ) {}
       }
 
       LOG(info) << "Attempting to connect to mempool...";
-      connected = false;
-      while ( !connected )
+      while ( true )
       {
          KOINOS_TODO("Remove this loop when MQ client retry logic is implemented (koinos-mq-cpp#15)")
          pack::json j;
@@ -84,8 +98,8 @@ int main( int argc, char** argv )
          try
          {
             client->rpc( mq::service::mempool, j.dump() ).get();
-            connected = true;
             LOG(info) << "Connected";
+            break;
          }
          catch( const mq::timeout_error& ) {}
       }
