@@ -22,6 +22,8 @@
 using namespace boost;
 using namespace koinos;
 
+constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
+
 int main( int argc, char** argv )
 {
    try
@@ -53,11 +55,25 @@ int main( int argc, char** argv )
       initialize_logging( service::block_producer, instance_id, level, basedir / service::block_producer );
 
       auto client = std::make_shared< mq::client >();
-      auto ec = client->connect( args.at( AMQP_OPTION ).as< std::string >() );
-      if ( ec != mq::error_code::success )
+
+      auto amqp_url = args[ AMQP_OPTION ].as< std::string >();
+      uint32_t amqp_sleep_ms = 1000;
+
+      LOG(info) << "Connecting AMQP client...";
+      while ( true )
       {
-         LOG(error) << "Unable to connect AMQP client";
-         return EXIT_FAILURE;
+         auto ec = client->connect( amqp_url );
+         if ( ec == mq::error_code::success )
+         {
+            LOG(info) << "Connected client to AMQP server";
+            break;
+         }
+         else
+         {
+            LOG(info) << "Failed, trying again in " << amqp_sleep_ms << " ms" ;
+            std::this_thread::sleep_for( std::chrono::milliseconds( amqp_sleep_ms ) );
+            amqp_sleep_ms = std::min( amqp_sleep_ms * 2, MAX_AMQP_CONNECT_SLEEP_MS );
+         }
       }
 
       {
