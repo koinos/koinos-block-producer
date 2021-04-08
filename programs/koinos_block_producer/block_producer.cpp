@@ -141,7 +141,7 @@ void block_producer_impl::produce_block()
 
       nlohmann::json j;
       pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::get_head_info_request{} } );
-      auto future = _rpc_client->rpc( mq::service::chain, j.dump() );
+      auto future = _rpc_client->rpc( service::chain, j.dump() );
 
       rpc::chain::chain_rpc_response resp;
       pack::from_json( nlohmann::json::parse( future.get() ), resp );
@@ -154,7 +154,7 @@ void block_producer_impl::produce_block()
 
       j.clear();
       pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::get_pending_transactions_request{ .limit = 100 } } );
-      future = _rpc_client->rpc( mq::service::mempool, j.dump() );
+      future = _rpc_client->rpc( service::mempool, j.dump() );
 
       rpc::mempool::mempool_rpc_response m_resp;
       pack::from_json( nlohmann::json::parse( future.get() ), m_resp );
@@ -175,7 +175,7 @@ void block_producer_impl::produce_block()
 
       j.clear();
       pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
-      future = _rpc_client->rpc( mq::service::chain, j.dump() );
+      future = _rpc_client->rpc( service::chain, j.dump() );
 
       pack::from_json( nlohmann::json::parse( future.get() ), resp );
       std::visit(
