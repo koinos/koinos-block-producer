@@ -19,9 +19,9 @@
 #define BASEDIR_OPTION     "basedir"
 #define AMQP_OPTION        "amqp"
 #define AMQP_DEFAULT       "amqp://guest:guest@localhost:5672/"
-#define LOG_LEVEL_OPTION       "log-level"
-#define LOG_LEVEL_DEFAULT      "info"
-#define INSTANCE_ID_OPTION     "instance-id"
+#define LOG_LEVEL_OPTION   "log-level"
+#define LOG_LEVEL_DEFAULT  "info"
+#define INSTANCE_ID_OPTION "instance-id"
 
 using namespace boost;
 using namespace koinos;
