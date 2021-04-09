@@ -96,9 +96,9 @@ int main( int argc, char** argv )
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 
-      if ( !config )
+      if ( config.IsNull() )
       {
-         LOG(warning) << "Could not find config (config.yml or config.yaml expected). Using default values";
+         LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
       }
 
       auto client = std::make_shared< mq::client >();
