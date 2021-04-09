@@ -6,6 +6,8 @@
 #include <boost/asio/signal_set.hpp>
 #include <boost/program_options.hpp>
 
+#include <yaml-cpp/yaml.h>
+
 #include <koinos/block_producer.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
@@ -14,15 +16,37 @@
 #include <koinos/util.hpp>
 
 #define HELP_OPTION        "help"
-#define AMQP_OPTION        "amqp"
 #define BASEDIR_OPTION     "basedir"
-#define LOG_FILTER_OPTION  "log-filter"
+#define AMQP_OPTION        "amqp"
+#define AMQP_DEFAULT       "amqp://guest:guest@localhost:5672/"
+#define LOG_LEVEL_OPTION   "log-level"
+#define LOG_LEVEL_DEFAULT  "info"
 #define INSTANCE_ID_OPTION "instance-id"
 
 using namespace boost;
 using namespace koinos;
 
 constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
+
+template< typename T >
+T get_option(
+   std::string key,
+   T default_value,
+   const program_options::variables_map& cli_args,
+   const YAML::Node& service_config = YAML::Node(),
+   const YAML::Node& global_config = YAML::Node() )
+{
+   if ( cli_args.count( key ) )
+      return cli_args[ key ].as< T >();
+
+   if ( service_config && service_config[ key ] )
+      return service_config[ key ].as< T >();
+
+   if ( global_config && global_config[ key ] )
+      return global_config[ key ].as< T >();
+
+   return std::move( default_value );
+}
 
 int main( int argc, char** argv )
 {
@@ -31,10 +55,10 @@ int main( int argc, char** argv )
       program_options::options_description options;
       options.add_options()
          (HELP_OPTION       ",h", "Print this help message and exit.")
-         (AMQP_OPTION       ",a", program_options::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
          (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
-         (LOG_FILTER_OPTION ",l", program_options::value< std::string >()->default_value( "info" ), "The log filtering level")
-         (INSTANCE_ID_OPTION",i", program_options::value< std::string >()->default_value( random_alphanumeric( 5 ) ), "An ID that uniquely identifies the instance");
+         (AMQP_OPTION       ",a", program_options::value< std::string >(), "AMQP server URL")
+         (LOG_LEVEL_OPTION  ",l", program_options::value< std::string >(), "The log filtering level")
+         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -49,14 +73,36 @@ int main( int argc, char** argv )
       if( basedir.is_relative() )
          basedir = std::filesystem::current_path() / basedir;
 
-      auto instance_id = args[ INSTANCE_ID_OPTION ].as< std::string >();
-      auto level       = args[ LOG_FILTER_OPTION ].as< std::string >();
+      YAML::Node config;
+      YAML::Node global_config;
+      YAML::Node block_producer_config;
 
-      initialize_logging( service::block_producer, instance_id, level, basedir / service::block_producer );
+      auto yaml_config = basedir / "config.yml";
+      if ( !std::filesystem::exists( yaml_config ) )
+      {
+         yaml_config = basedir / "config.yaml";
+      }
+
+      if ( std::filesystem::exists( yaml_config ) )
+      {
+         config = YAML::LoadFile( yaml_config );
+         global_config = config[ "global" ];
+         block_producer_config = config[ service::block_producer ];
+      }
+
+      auto amqp_url    = get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
+      auto log_level   = get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
+      auto instance_id = get_option< std::string >( INSTANCE_ID_OPTION, random_alphanumeric( 5 ), args, block_producer_config, global_config );
+
+      initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
+
+      if ( config.IsNull() )
+      {
+         LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
+      }
 
       auto client = std::make_shared< mq::client >();
 
-      auto amqp_url = args[ AMQP_OPTION ].as< std::string >();
       uint32_t amqp_sleep_ms = 1000;
 
       LOG(info) << "Connecting AMQP client...";
