@@ -4,6 +4,7 @@ RUN apk update && \
     apk add  \
         gcc \
         g++ \
+        ccache \
         musl-dev \
         linux-headers \
         libgmpxx \
@@ -19,7 +20,12 @@ RUN apk update && \
 ADD . /koinos-block-producer
 WORKDIR /koinos-block-producer
 
-RUN git submodule update --init --recursive && \
+ENV CC=/usr/lib/ccache/bin/gcc
+ENV CXX=/usr/lib/ccache/bin/g++
+
+RUN mkdir -p /koinos-chain/.ccache && \
+    ln -s /koinos-chain/.ccache $HOME/.ccache && \
+    git submodule update --init --recursive && \
     cmake -DCMAKE_BUILD_TYPE=Release . && \
     cmake --build . --config Release --parallel
 
