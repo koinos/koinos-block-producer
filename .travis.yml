@@ -36,7 +36,7 @@ install:
   - ci/install.sh
 
 script:
-  - ci/build.sh
+  - ci/build.sh && ci/test.sh
 
 after_success:
   - ci/after_success.sh
