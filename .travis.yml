@@ -24,6 +24,8 @@ jobs:
         - MATRIX_EVAL="CC=clang-11 && CXX=clang++-11"
     - os: linux
       dist: focal
+      langauge: go
+      go: 1.x
       env:
         - BUILD_DOCKER=1
 
@@ -34,7 +36,7 @@ install:
   - ci/install.sh
 
 script:
-  - ci/build.sh
+  - ci/build.sh && ci/test.sh
 
 after_success:
   - ci/after_success.sh
