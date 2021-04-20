@@ -103,24 +103,14 @@ int main( int argc, char** argv )
 
       auto client = std::make_shared< mq::client >();
 
-      uint32_t amqp_sleep_ms = 1000;
-
       LOG(info) << "Connecting AMQP client...";
-      while ( true )
+      auto ec = client->connect( amqp_url );
+      if ( ec != mq::error_code::success )
       {
-         auto ec = client->connect( amqp_url );
-         if ( ec == mq::error_code::success )
-         {
-            LOG(info) << "Connected client to AMQP server";
-            break;
-         }
-         else
-         {
-            LOG(info) << "Failed, trying again in " << amqp_sleep_ms << " ms" ;
-            std::this_thread::sleep_for( std::chrono::milliseconds( amqp_sleep_ms ) );
-            amqp_sleep_ms = std::min( amqp_sleep_ms * 2, MAX_AMQP_CONNECT_SLEEP_MS );
-         }
+         LOG(info) << "Unable to connect to AMQP server" ;
+         exit( EXIT_FAILURE );
       }
+      LOG(info) << "Connected client to AMQP server";
 
       {
          LOG(info) << "Attempting to connect to chain...";
