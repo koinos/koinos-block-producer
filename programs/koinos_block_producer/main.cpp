@@ -150,13 +150,13 @@ int main( int argc, char** argv )
       if ( algorithm == FEDERATED_ALGORITHM )
       {
          LOG(info) << "Using " << FEDERATED_ALGORITHM << " algorithm";
-         producer = std::make_unique< block_production::federated_producer >( production_context, client );
+         producer = std::make_unique< block_production::federated_producer >( main_context, production_context, client );
       }
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
          KOINOS_ASSERT( jobs > 1, koinos::exception, "Jobs must be greater than 1 when using " POW_ALGORITHM " algorithm." );
-         producer = std::make_unique< block_production::pow_producer >( production_context, client, main_context, work_groups );
+         producer = std::make_unique< block_production::pow_producer >( main_context, production_context, client, work_groups );
          LOG(info) << "Using " << work_groups << " work groups";
       }
       else

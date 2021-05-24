@@ -5,16 +5,23 @@
 
 #include <boost/asio/post.hpp>
 
-#define KOINOS_BLOCK_TIME_MS 5000
+using namespace std::chrono_literals;
 
 namespace koinos::block_production {
 
-federated_producer::federated_producer( boost::asio::io_context& ioc, std::shared_ptr< mq::client > rpc_client ) :
-   block_producer( ioc, rpc_client ),
-   _production_interval( KOINOS_BLOCK_TIME_MS ),
-   _timer( _io_context, _production_interval )
+namespace block_time
 {
-   boost::asio::post( _io_context, std::bind( &federated_producer::produce, this, boost::system::error_code{} ) );
+   constexpr std::chrono::seconds interval = 5s;
+}
+
+federated_producer::federated_producer(
+   boost::asio::io_context& main_context,
+   boost::asio::io_context& production_context,
+   std::shared_ptr< mq::client > rpc_client ) :
+   block_producer( main_context, production_context, rpc_client ),
+   _timer( _production_context )
+{
+   boost::asio::post( _production_context, std::bind( &federated_producer::produce, this, boost::system::error_code{} ) );
 }
 
 federated_producer::~federated_producer() = default;
@@ -37,7 +44,7 @@ void federated_producer::produce( const boost::system::error_code& ec )
       LOG(error) << e.what();
    }
 
-   _timer.expires_at( _timer.expires_at() + _production_interval );
+   _timer.expires_from_now( block_time::interval );
    _timer.async_wait( std::bind( &federated_producer::produce, this, std::placeholders::_1 ) );
 }
 
