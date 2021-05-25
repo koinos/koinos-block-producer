@@ -13,7 +13,7 @@ if ! [[ -z $BUILD_DOCKER ]]; then
 
    export BLOCK_PRODUCER_TAG=$TAG
 
-   git clone https://github.com/koinos/koinos-integration-tests.git
+   git clone -b extended-time https://github.com/koinos/koinos-integration-tests.git
 
    cd koinos-integration-tests
    go get ./...
