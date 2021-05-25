@@ -7,13 +7,16 @@
 #include <optional>
 
 #include <boost/asio/steady_timer.hpp>
+#include <boost/multiprecision/cpp_int.hpp>
 
 #include <koinos/block_production/block_producer.hpp>
 
 namespace koinos::block_production {
 
-using worker_group_type = std::pair< uint64_t, uint64_t >;
-using nonce_type        = std::atomic< std::optional< uint64_t > >;
+using boost::multiprecision::uint512_t;
+using boost::multiprecision::uint256_t;
+
+using worker_group_type = std::pair< uint256_t, uint256_t >;
 using hash_count_type   = std::atomic< uint64_t >;
 
 class pow_producer final : public block_producer
@@ -38,16 +41,17 @@ private:
    std::condition_variable                       _cv;
    boost::asio::steady_timer                     _timer;
 
-   uint32_t get_difficulty();
    void find_nonce(
       std::size_t worker_index,
       const protocol::block& block,
-      uint32_t difficulty,
-      uint64_t start,
-      uint64_t end,
-      std::shared_ptr< nonce_type > nonce_return
+      uint256_t difficulty,
+      uint256_t start,
+      uint256_t end,
+      std::shared_ptr< std::optional< uint256_t > > nonce_return,
+      std::shared_ptr< std::atomic< bool > > nonce_found
    );
-   bool difficulty_met( const multihash& hash, uint32_t difficulty );
+   bool difficulty_met( const multihash& hash, uint256_t difficulty );
+   uint256_t get_difficulty();
 };
 
 } // koinos::block_production

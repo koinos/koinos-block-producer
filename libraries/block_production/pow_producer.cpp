@@ -29,13 +29,13 @@ pow_producer::pow_producer(
    block_producer( main_context, production_context, rpc_client ),
    _timer( _main_context )
 {
-   constexpr uint128_t max_nonce = std::numeric_limits< uint64_t >::max();
+   constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
    for ( std::size_t worker_index = 0; worker_index < worker_groups; worker_index++ )
    {
-      uint128_t start = max_nonce * worker_index / worker_groups;
-      uint128_t end   = max_nonce * ( worker_index + 1 ) / worker_groups;
-      _worker_groups.emplace_back( start.convert_to< uint64_t >(), end.convert_to< uint64_t >() );
-      LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint64_t >() << ", " << end.convert_to< uint64_t >() << "]";
+      uint512_t start = max_nonce * worker_index / worker_groups;
+      uint512_t end   = max_nonce * ( worker_index + 1 ) / worker_groups;
+      _worker_groups.emplace_back( start.convert_to< uint256_t >(), end.convert_to< uint256_t >() );
+      LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
       _worker_hashrate[ worker_index ].store( 0 );
    }
 
@@ -93,7 +93,8 @@ void pow_producer::produce()
       fill_block( block );
       auto difficulty = get_difficulty();
 
-      auto nonce_return = std::make_shared< nonce_type >();
+      auto nonce_return = std::make_shared< std::optional< uint256_t > >();
+      auto nonce_found  = std::make_shared< std::atomic< bool > >();
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
@@ -108,7 +109,8 @@ void pow_producer::produce()
                difficulty,
                start,
                end,
-               nonce_return
+               nonce_return,
+               nonce_found
             )
          );
       }
@@ -117,14 +119,14 @@ void pow_producer::produce()
          auto lock = std::unique_lock< std::mutex >( _cv_mutex );
          while ( !_cv.wait_for( lock, 1s, [&]()
          {
-            return nonce_return->load().has_value() || _production_context.stopped();
+            return *nonce_found || _production_context.stopped();
          } ) );
 
          if ( _production_context.stopped() )
             return;
       }
 
-      auto nonce = *nonce_return->load();
+      auto nonce = nonce_return->value();
 
       LOG(info) << "Found nonce: " << nonce;
 
@@ -151,10 +153,11 @@ void pow_producer::produce()
 void pow_producer::find_nonce(
    std::size_t worker_index,
    const protocol::block& block,
-   uint32_t difficulty,
-   uint64_t start,
-   uint64_t end,
-   std::shared_ptr< nonce_type > nonce_return )
+   uint256_t difficulty,
+   uint256_t start,
+   uint256_t end,
+   std::shared_ptr< std::optional< uint256_t > > nonce_return,
+   std::shared_ptr< std::atomic< bool > > nonce_found )
 {
    auto begin_time  = std::chrono::steady_clock::now();
    auto begin_nonce = start;
@@ -163,9 +166,9 @@ void pow_producer::find_nonce(
    pack::to_variable_blob( block.header );
    pack::to_variable_blob( base_blob, block.active_data, true );
 
-   for ( uint64_t nonce = start; nonce < end; nonce++ )
+   for ( uint256_t nonce = start; nonce < end; nonce++ )
    {
-      if ( nonce_return->load().has_value() || _production_context.stopped() )
+      if ( *nonce_found || _production_context.stopped() )
          break;
 
       variable_blob blob( base_blob );
@@ -175,26 +178,28 @@ void pow_producer::find_nonce(
       if ( difficulty_met( hash, difficulty ) )
       {
          std::unique_lock< std::mutex > lock( _cv_mutex );
-         nonce_return->store( nonce );
+         *nonce_return = nonce;
+         *nonce_found = true;
          _cv.notify_one();
       }
 
       if ( auto now = std::chrono::steady_clock::now(); now - begin_time > hashrate::update_interval )
       {
-         _worker_hashrate[ worker_index ].store( nonce - begin_nonce );
+         auto hashes = nonce - begin_nonce;
+         _worker_hashrate[ worker_index ].store( hashes.convert_to< uint64_t >() );
          begin_time = now;
          begin_nonce = nonce;
       }
    }
 }
 
-uint32_t pow_producer::get_difficulty()
+uint256_t pow_producer::get_difficulty()
 {
    KOINOS_TODO( "Retrieve difficulty from chain" );
    return 20;
 }
 
-bool pow_producer::difficulty_met( const multihash& hash, uint32_t difficulty )
+bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
 {
    KOINOS_TODO( "Implement dynamic difficulty" );
    if (
