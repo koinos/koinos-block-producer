@@ -20,6 +20,8 @@ public:
    );
    virtual ~block_producer();
 
+   virtual void on_block_accept( const protocol::block& b );
+
 protected:
    protocol::block next_block();
    void fill_block( protocol::block& b );

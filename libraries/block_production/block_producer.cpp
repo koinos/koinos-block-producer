@@ -145,4 +145,6 @@ timestamp_type block_producer::now()
    };
 }
 
+void block_producer::on_block_accept( const protocol::block& b ) {}
+
 } // koinos::block_production

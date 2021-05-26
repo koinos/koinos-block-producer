@@ -18,7 +18,7 @@ namespace hashrate
    constexpr double megahash = 1.0e6;
    constexpr double kilohash = 1.0e3;
 
-   constexpr std::chrono::seconds update_interval = 5s;
+   constexpr std::chrono::seconds update_interval = 2s;
 }
 
 pow_producer::pow_producer(
@@ -87,18 +87,18 @@ void pow_producer::display_hashrate( const boost::system::error_code& ec )
 
 void pow_producer::produce()
 {
+   auto done  = std::make_shared< std::atomic< bool > >();
+   auto nonce = std::make_shared< std::optional< uint256_t > >();
+
    try
    {
       auto block = next_block();
       fill_block( block );
       auto difficulty = get_difficulty();
 
-      auto nonce_return = std::make_shared< std::optional< uint256_t > >();
-      auto nonce_found  = std::make_shared< std::atomic< bool > >();
-
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
-         auto& [ start, end ] = _worker_groups.at( worker_index );
+         const auto& [ start, end ] = _worker_groups.at( worker_index );
          boost::asio::post(
             _production_context,
             std::bind(
@@ -109,41 +109,59 @@ void pow_producer::produce()
                difficulty,
                start,
                end,
-               nonce_return,
-               nonce_found
+               nonce,
+               done
             )
          );
       }
 
       {
          auto lock = std::unique_lock< std::mutex >( _cv_mutex );
+
+         bool service_was_halted = false;
+         bool block_is_stale     = false;
+
          while ( !_cv.wait_for( lock, 1s, [&]()
          {
-            return *nonce_found || _production_context.stopped();
+            service_was_halted = _production_context.stopped();
+            block_is_stale     = _last_known_height >= block.header.height;
+
+            return *done || service_was_halted || block_is_stale;
          } ) );
 
-         if ( _production_context.stopped() )
+         if ( service_was_halted )
             return;
+
+         if ( block_is_stale )
+         {
+            LOG(info) << "Block is stale, retrieving new head";
+            *done = true;
+            boost::asio::post( _production_context, std::bind( &pow_producer::produce, this ) );
+            return;
+         }
       }
 
-      auto nonce = nonce_return->value();
+      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "Expected nonce to contain a value" );
 
-      LOG(info) << "Found nonce: " << nonce;
+      auto block_nonce = nonce->value();
+
+      LOG(info) << "Found nonce: " << block_nonce;
 
       block.id = crypto::hash_n(
          CRYPTO_SHA2_256_ID,
          block.header,
          block.active_data,
-         nonce
+         block_nonce
       );
 
-      pack::to_variable_blob( block.signature_data, nonce );
+      pack::to_variable_blob( block.signature_data, block_nonce );
       pack::to_variable_blob( block.signature_data, _signing_key.sign_compact( block.id ), true );
 
       submit_block( block );
    }
    catch ( const std::exception& e )
    {
+      *done = true;
       LOG(warning) << e.what();
    }
 
@@ -156,8 +174,8 @@ void pow_producer::find_nonce(
    uint256_t difficulty,
    uint256_t start,
    uint256_t end,
-   std::shared_ptr< std::optional< uint256_t > > nonce_return,
-   std::shared_ptr< std::atomic< bool > > nonce_found )
+   std::shared_ptr< std::optional< uint256_t > > nonce,
+   std::shared_ptr< std::atomic< bool > > done )
 {
    auto begin_time  = std::chrono::steady_clock::now();
    auto begin_nonce = start;
@@ -166,29 +184,29 @@ void pow_producer::find_nonce(
    pack::to_variable_blob( block.header );
    pack::to_variable_blob( base_blob, block.active_data, true );
 
-   for ( uint256_t nonce = start; nonce < end; nonce++ )
+   for ( uint256_t current_nonce = start; current_nonce < end; current_nonce++ )
    {
-      if ( *nonce_found || _production_context.stopped() )
+      if ( *done || _production_context.stopped() )
          break;
 
       variable_blob blob( base_blob );
-      pack::to_variable_blob( blob, nonce, true );
+      pack::to_variable_blob( blob, current_nonce, true );
       auto hash = crypto::hash( CRYPTO_SHA2_256_ID, blob );
 
       if ( difficulty_met( hash, difficulty ) )
       {
          std::unique_lock< std::mutex > lock( _cv_mutex );
-         *nonce_return = nonce;
-         *nonce_found = true;
+         *nonce = current_nonce;
+         *done  = true;
          _cv.notify_one();
       }
 
       if ( auto now = std::chrono::steady_clock::now(); now - begin_time > hashrate::update_interval )
       {
-         auto hashes = nonce - begin_nonce;
-         _worker_hashrate[ worker_index ].store( hashes.convert_to< uint64_t >() );
-         begin_time = now;
-         begin_nonce = nonce;
+         auto hashes = current_nonce - begin_nonce;
+         begin_time  = now;
+         begin_nonce = current_nonce;
+         _worker_hashrate[ worker_index ] = hashes.convert_to< uint64_t >();
       }
    }
 }
@@ -210,6 +228,13 @@ bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
       )
       return true;
    return false;
+}
+
+void pow_producer::on_block_accept( const protocol::block& b )
+{
+   std::unique_lock< std::mutex > lock( _cv_mutex );
+   _last_known_height = b.header.height;
+   _cv.notify_one();
 }
 
 } // koinos::block_production

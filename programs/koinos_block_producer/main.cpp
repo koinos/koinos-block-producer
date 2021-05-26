@@ -13,6 +13,7 @@
 #include <koinos/block_production/pow_producer.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
+#include <koinos/mq/request_handler.hpp>
 #include <koinos/pack/classes.hpp>
 #include <koinos/pack/rt/json.hpp>
 #include <koinos/util.hpp>
@@ -33,8 +34,6 @@
 
 using namespace boost;
 using namespace koinos;
-
-constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
 
 using work_guard_type = boost::asio::executor_work_guard< boost::asio::io_context::executor_type >;
 
@@ -165,6 +164,46 @@ int main( int argc, char** argv )
          exit( EXIT_FAILURE );
       }
 
+      mq::request_handler reqhandler;
+
+      ec = reqhandler.add_broadcast_handler(
+         "koinos.block.accept",
+         [&]( const std::string& msg )
+         {
+            try
+            {
+               broadcast::block_accepted bam;
+               pack::from_json( pack::json::parse( msg ), bam );
+               producer->on_block_accept( bam.block );
+            }
+            catch( const boost::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << boost::diagnostic_information( e );
+            }
+            catch( const std::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << e.what();
+            }
+         }
+      );
+
+      if ( ec != mq::error_code::success )
+      {
+         LOG(error) << "Unable to register block broadcast handler";
+         exit( EXIT_FAILURE );
+      }
+
+      LOG(info) << "Connecting AMQP request handler...";
+      ec = reqhandler.connect( amqp_url );
+      if ( ec != mq::error_code::success )
+      {
+         LOG(info) << "Unable to connect to AMQP request handler" ;
+         exit( EXIT_FAILURE );
+      }
+      LOG(info) << "Connected client to AMQP server";
+
+      reqhandler.start();
+
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
 
@@ -178,6 +217,7 @@ int main( int argc, char** argv )
          LOG(info) << "Caught signal, shutting down...";
          production_context.stop();
          main_context.stop();
+         reqhandler.stop();
       } );
 
       std::vector< std::thread > threads;
