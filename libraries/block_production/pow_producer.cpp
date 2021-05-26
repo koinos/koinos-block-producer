@@ -1,4 +1,6 @@
+#include <bitset>
 #include <chrono>
+#include <iostream>
 
 #include <boost/asio/post.hpp>
 
@@ -6,6 +8,7 @@
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
+
 
 using namespace std::chrono_literals;
 
@@ -213,20 +216,14 @@ void pow_producer::find_nonce(
 
 uint256_t pow_producer::get_difficulty()
 {
-   KOINOS_TODO( "Retrieve difficulty from chain" );
-   return 20;
+   return std::numeric_limits< uint256_t >::max() >> 30;
 }
 
 bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
 {
-   KOINOS_TODO( "Implement dynamic difficulty" );
-   if (
-      uint8_t( hash.digest[0] ) == uint8_t( 0x00 ) &&
-      uint8_t( hash.digest[1] ) == uint8_t( 0x00 ) &&
-      uint8_t( hash.digest[2] ) == uint8_t( 0x00 ) &&
-      uint8_t( hash.digest[3] ) <= uint8_t( 0x0F )
-      )
+   if ( pack::from_variable_blob< uint256_t >( hash.digest ) <= difficulty )
       return true;
+
    return false;
 }
 
