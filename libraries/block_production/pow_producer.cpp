@@ -9,6 +9,28 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
 
+struct difficulty_metadata
+{
+   koinos::uint256        current_difficulty = 0;
+   koinos::timestamp_type last_block_time    = koinos::timestamp_type( 0 );
+   koinos::timestamp_type block_window_time  = koinos::timestamp_type( 0 );
+   koinos::uint32         averaging_window   = 0;
+};
+
+KOINOS_REFLECT( difficulty_metadata,
+   (current_difficulty)
+   (last_block_time)
+   (block_window_time)
+   (averaging_window)
+)
+
+struct pow_signature_data
+{
+   koinos::uint256          nonce;
+   koinos::fixed_blob< 65 > recoverable_signature;
+};
+
+KOINOS_REFLECT( pow_signature_data, (nonce)(recoverable_signature) )
 
 using namespace std::chrono_literals;
 
@@ -37,9 +59,11 @@ pow_producer::pow_producer(
    {
       uint512_t start = max_nonce * worker_index / worker_groups;
       uint512_t end   = max_nonce * ( worker_index + 1 ) / worker_groups;
+
       _worker_groups.emplace_back( start.convert_to< uint256_t >(), end.convert_to< uint256_t >() );
-      LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
       _worker_hashrate[ worker_index ].store( 0 );
+
+      LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
    }
 
    boost::asio::post( _production_context, std::bind( &pow_producer::produce, this ) );
@@ -157,8 +181,11 @@ void pow_producer::produce()
          block_nonce
       );
 
-      pack::to_variable_blob( block.signature_data, block_nonce );
-      pack::to_variable_blob( block.signature_data, _signing_key.sign_compact( block.id ), true );
+      pow_signature_data pow_data;
+      pow_data.nonce = block_nonce;
+      pow_data.recoverable_signature = _signing_key.sign_compact( block.id );
+
+      pack::to_variable_blob( block.signature_data, pow_data );
 
       submit_block( block );
    }
@@ -216,7 +243,21 @@ void pow_producer::find_nonce(
 
 uint256_t pow_producer::get_difficulty()
 {
-   return std::numeric_limits< uint256_t >::max() >> 30;
+   rpc::chain::read_contract_request req;
+   req.contract_id = pack::from_variable_blob< contract_id_type >( pack::to_variable_blob( uint160_t( 1 ) ) );
+   req.entry_point = 1249216561;
+
+   pack::json j;
+   pack::to_json( j, rpc::chain::chain_rpc_request{ req } );
+   auto future = _rpc_client->rpc( service::chain, j.dump() );
+
+   rpc::chain::chain_rpc_response resp;
+   pack::from_json( pack::json::parse( future.get() ), resp );
+   auto contract_response = std::get< rpc::chain::read_contract_response >( resp );
+
+   auto metadata = pack::from_variable_blob< difficulty_metadata >( contract_response.result );
+
+   return metadata.current_difficulty;
 }
 
 bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
