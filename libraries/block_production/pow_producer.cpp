@@ -177,13 +177,6 @@ void pow_producer::produce()
 
       LOG(info) << "Found nonce: " << block_nonce;
 
-//      block.id = crypto::hash_n(
-//         CRYPTO_SHA2_256_ID,
-//         block.header,
-//         block.active_data,
-//         block_nonce
-//      );
-
       pow_signature_data pow_data;
       pow_data.nonce = block_nonce;
       pow_data.recoverable_signature = _signing_key.sign_compact( block.id );
@@ -213,18 +206,12 @@ void pow_producer::find_nonce(
    auto begin_time  = std::chrono::steady_clock::now();
    auto begin_nonce = start;
 
-//   variable_blob base_blob;
-//   pack::to_variable_blob( block.header );
-//   pack::to_variable_blob( base_blob, block.active_data, true );
-
    for ( uint256_t current_nonce = start; current_nonce < end; current_nonce++ )
    {
       if ( *done || _production_context.stopped() )
          break;
-//
-//      variable_blob blob( base_blob );
-//      pack::to_variable_blob( blob, current_nonce, true );
-      auto hash = crypto::hash_n( CRYPTO_SHA2_256_ID, block.id, current_nonce );
+
+      auto hash = crypto::hash_n( CRYPTO_SHA2_256_ID, current_nonce, block.id.digest );
 
       if ( difficulty_met( hash, difficulty ) )
       {
