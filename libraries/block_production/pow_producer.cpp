@@ -176,6 +176,7 @@ void pow_producer::produce()
       auto block_nonce = nonce->value();
 
       LOG(info) << "Found nonce: " << block_nonce;
+      LOG(info) << "Proof: " << crypto::hash_n( CRYPTO_SHA2_256_ID, block_nonce, block.id.digest );
 
       pow_signature_data pow_data;
       pow_data.nonce = block_nonce;
