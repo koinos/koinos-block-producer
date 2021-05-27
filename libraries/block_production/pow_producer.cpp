@@ -212,7 +212,9 @@ void pow_producer::find_nonce(
       if ( *done || _production_context.stopped() )
          break;
 
-      auto hash = crypto::hash_n( CRYPTO_SHA2_256_ID, current_nonce, block.id.digest );
+      auto blob = pack::to_variable_blob( current_nonce );
+      blob.insert( blob.end(), block.id.digest.begin(), block.id.digest.end() );
+      auto hash = crypto::hash( CRYPTO_SHA2_256_ID, blob );
 
       if ( difficulty_met( hash, difficulty ) )
       {
