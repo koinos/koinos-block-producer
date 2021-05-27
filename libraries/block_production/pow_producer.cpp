@@ -114,7 +114,7 @@ void pow_producer::display_hashrate( const boost::system::error_code& ec )
 
 void pow_producer::produce()
 {
-   auto done  = std::make_shared< std::atomic< bool > >();
+   auto done  = std::make_shared< std::atomic< bool > >( false );
    auto nonce = std::make_shared< std::optional< uint256_t > >();
 
    try
@@ -214,14 +214,17 @@ void pow_producer::find_nonce(
 
       auto blob = pack::to_variable_blob( current_nonce );
       blob.insert( blob.end(), block.id.digest.begin(), block.id.digest.end() );
-      auto hash = crypto::hash( CRYPTO_SHA2_256_ID, blob );
+      auto hash = crypto::hash_str( CRYPTO_SHA2_256_ID, blob.data(), blob.size() );
 
       if ( difficulty_met( hash, difficulty ) )
       {
          std::unique_lock< std::mutex > lock( _cv_mutex );
-         *nonce = current_nonce;
-         *done  = true;
-         _cv.notify_one();
+         if ( !*done )
+         {
+            *nonce = current_nonce;
+            *done  = true;
+            _cv.notify_one();
+         }
       }
 
       if ( auto now = std::chrono::steady_clock::now(); now - begin_time > hashrate::update_interval )
