@@ -207,7 +207,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       _error_timer.async_wait( std::bind( &pow_producer::produce, this, std::placeholders::_1 ) );
 
       // Exponential backoff, max wait time 30 seconds
-      auto next_wait_time = std::min( _error_wait_time.load().count() * 2, 30ll );
+      auto next_wait_time = std::min( uint64_t( _error_wait_time.load().count() * 2 ), uint64_t( 30 ) );
       _error_wait_time = std::chrono::seconds( next_wait_time );
       return;
    }
