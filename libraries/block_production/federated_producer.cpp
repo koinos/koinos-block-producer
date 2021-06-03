@@ -41,7 +41,7 @@ void federated_producer::produce( const boost::system::error_code& ec )
    }
    catch ( const std::exception& e )
    {
-      LOG(error) << e.what();
+      LOG(warning) << e.what();
    }
 
    _timer.expires_from_now( block_time::interval );

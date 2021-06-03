@@ -34,7 +34,7 @@ public:
    virtual void on_block_accept( const protocol::block& b ) override;
 
 protected:
-   void produce();
+   void produce( const boost::system::error_code& ec );
    void display_hashrate( const boost::system::error_code& ec );
 
 private:
@@ -42,8 +42,11 @@ private:
    std::vector< worker_group_type >              _worker_groups;
    std::mutex                                    _cv_mutex;
    std::condition_variable                       _cv;
-   boost::asio::steady_timer                     _timer;
+   boost::asio::steady_timer                     _update_timer;
    block_height_type                             _last_known_height;
+   boost::asio::steady_timer                     _error_timer;
+   std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
+   std::atomic< bool >                           _producing = true;
 
    void find_nonce(
       std::size_t worker_index,

@@ -1,4 +1,4 @@
-#include <bitset>
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 
@@ -52,7 +52,8 @@ pow_producer::pow_producer(
    std::shared_ptr< mq::client > rpc_client,
    std::size_t worker_groups ) :
    block_producer( main_context, production_context, rpc_client ),
-   _timer( _main_context )
+   _update_timer( _main_context ),
+   _error_timer( _main_context )
 {
    constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
    for ( std::size_t worker_index = 0; worker_index < worker_groups; worker_index++ )
@@ -66,9 +67,9 @@ pow_producer::pow_producer(
       LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
    }
 
-   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this ) );
-   _timer.expires_from_now( hashrate::update_interval + 2500ms );
-   _timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
+   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
+   _update_timer.expires_from_now( hashrate::update_interval + 2500ms );
+   _update_timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
 }
 
 pow_producer::~pow_producer() = default;
@@ -78,42 +79,48 @@ void pow_producer::display_hashrate( const boost::system::error_code& ec )
    if ( ec == boost::asio::error::operation_aborted )
       return;
 
-   double total_hashes = 0;
-   for ( auto it = _worker_hashrate.begin(); it != _worker_hashrate.end(); ++it )
-      total_hashes += it->second.load();
-
-   total_hashes /= hashrate::update_interval.count();
-   std::string suffix = "H/s";
-
-   if ( total_hashes > hashrate::terahash )
+   if ( _producing )
    {
-      total_hashes /= hashrate::terahash;
-      suffix = "TH/s";
-   }
-   else if ( total_hashes > hashrate::gigahash )
-   {
-      total_hashes /= hashrate::gigahash;
-      suffix = "GH/s";
-   }
-   else if ( total_hashes > hashrate::megahash )
-   {
-      total_hashes /= hashrate::megahash;
-      suffix = "MH/s";
-   }
-   else if ( total_hashes > hashrate::kilohash )
-   {
-      total_hashes /= hashrate::kilohash;
-      suffix = "KH/s";
+      double total_hashes = 0;
+      for ( auto it = _worker_hashrate.begin(); it != _worker_hashrate.end(); ++it )
+         total_hashes += it->second.load();
+
+      total_hashes /= hashrate::update_interval.count();
+      std::string suffix = "H/s";
+
+      if ( total_hashes > hashrate::terahash )
+      {
+         total_hashes /= hashrate::terahash;
+         suffix = "TH/s";
+      }
+      else if ( total_hashes > hashrate::gigahash )
+      {
+         total_hashes /= hashrate::gigahash;
+         suffix = "GH/s";
+      }
+      else if ( total_hashes > hashrate::megahash )
+      {
+         total_hashes /= hashrate::megahash;
+         suffix = "MH/s";
+      }
+      else if ( total_hashes > hashrate::kilohash )
+      {
+         total_hashes /= hashrate::kilohash;
+         suffix = "KH/s";
+      }
+
+      LOG(info) << "Hashrate: " << total_hashes << " " << suffix;
    }
 
-   LOG(info) << "Hashrate: " << total_hashes << " " << suffix;
-
-   _timer.expires_from_now( hashrate::update_interval );
-   _timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
+   _update_timer.expires_from_now( hashrate::update_interval );
+   _update_timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
 }
 
-void pow_producer::produce()
+void pow_producer::produce( const boost::system::error_code& ec )
 {
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
    auto done  = std::make_shared< std::atomic< bool > >( false );
    auto nonce = std::make_shared< std::optional< uint256_t > >();
 
@@ -145,6 +152,8 @@ void pow_producer::produce()
          );
       }
 
+      _producing = true;
+
       {
          auto lock = std::unique_lock< std::mutex >( _cv_mutex );
 
@@ -166,7 +175,7 @@ void pow_producer::produce()
          {
             LOG(info) << "Block is stale, retrieving new head";
             *done = true;
-            boost::asio::post( _production_context, std::bind( &pow_producer::produce, this ) );
+            boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
             return;
          }
       }
@@ -185,14 +194,25 @@ void pow_producer::produce()
       pack::to_variable_blob( block.signature_data, pow_data );
 
       submit_block( block );
+      _error_wait_time = 5s;
    }
    catch ( const std::exception& e )
    {
       *done = true;
-      LOG(warning) << e.what();
+      _producing = false;
+
+      LOG(warning) << e.what() << ", retrying in " << _error_wait_time.load().count() << "s";
+
+      _error_timer.expires_from_now( _error_wait_time.load() );
+      _error_timer.async_wait( std::bind( &pow_producer::produce, this, std::placeholders::_1 ) );
+
+      // Exponential backoff, max wait time 30 seconds
+      auto next_wait_time = std::min( _error_wait_time.load().count() * 2, 30ll );
+      _error_wait_time = std::chrono::seconds( next_wait_time );
+      return;
    }
 
-   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this ) );
+   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
 }
 
 void pow_producer::find_nonce(
@@ -249,7 +269,23 @@ uint256_t pow_producer::get_difficulty()
 
    rpc::chain::chain_rpc_response resp;
    pack::from_json( pack::json::parse( future.get() ), resp );
-   auto contract_response = std::get< rpc::chain::read_contract_response >( resp );
+
+   rpc::chain::read_contract_response contract_response;
+   std::visit(
+      koinos::overloaded {
+         [&]( const rpc::chain::read_contract_response& cr )
+         {
+            contract_response = cr;
+         },
+         [&]( const rpc::chain::chain_error_response& ce )
+         {
+            KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", ce.error_text) );
+         },
+         [&]( const auto& p )
+         {
+            KOINOS_THROW( koinos::exception, "Unexpected RPC response while retrieving difficulty from the pow contract" );
+         }
+   }, resp );
 
    auto metadata = pack::from_variable_blob< difficulty_metadata >( contract_response.result );
 

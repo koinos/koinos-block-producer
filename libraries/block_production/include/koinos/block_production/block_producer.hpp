@@ -7,6 +7,7 @@
 #include <koinos/mq/client.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/pack/classes.hpp>
+#include <koinos/exception.hpp>
 
 namespace koinos::block_production {
 

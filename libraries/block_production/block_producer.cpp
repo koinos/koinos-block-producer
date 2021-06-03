@@ -6,8 +6,6 @@
 #include <koinos/pack/classes.hpp>
 #include <koinos/util.hpp>
 
-#define KOINOS_BLOCK_TIME_MS 5000
-
 namespace koinos::block_production {
 
 block_producer::block_producer(
@@ -34,7 +32,23 @@ protocol::block block_producer::next_block()
 
    rpc::chain::chain_rpc_response resp;
    pack::from_json( pack::json::parse( future.get() ), resp );
-   auto head_info = std::get< rpc::chain::get_head_info_response >( resp );
+
+   rpc::chain::get_head_info_response head_info;
+   std::visit(
+      koinos::overloaded {
+         [&]( const rpc::chain::get_head_info_response& hi )
+         {
+            head_info = hi;
+         },
+         [&]( const rpc::chain::chain_error_response& ce )
+         {
+            KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", ce.error_text) );
+         },
+         [&]( const auto& p )
+         {
+            KOINOS_THROW( koinos::exception, "Unexpected RPC response when retrieving head info" );
+         }
+   }, resp );
 
    b.header.previous  = head_info.head_topology.id;
    b.header.height    = head_info.head_topology.height + 1;
@@ -51,7 +65,23 @@ void block_producer::fill_block( protocol::block& b )
 
    rpc::mempool::mempool_rpc_response resp;
    pack::from_json( pack::json::parse( future.get() ), resp );
-   auto mempool = std::get< rpc::mempool::get_pending_transactions_response >( resp );
+
+   rpc::mempool::get_pending_transactions_response mempool;
+   std::visit(
+      koinos::overloaded {
+         [&]( const rpc::mempool::get_pending_transactions_response& mpr )
+         {
+            mempool = mpr;
+         },
+         [&]( const rpc::mempool::mempool_error_response& ce )
+         {
+            KOINOS_THROW( koinos::exception, "Error while retrieving transaction from the mempool: ${e}", ("e", ce.error_text) );
+         },
+         [&]( const auto& p )
+         {
+            KOINOS_THROW( koinos::exception, "Unexpected RPC response when retrieving transaction from the mempool" );
+         }
+   }, resp );
 
    KOINOS_TODO( "Limit transaction inclusion via block size" );
    b.transactions.insert( b.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
@@ -82,14 +112,13 @@ void block_producer::submit_block( protocol::block& b )
          {
             LOG(info) << "Produced block - Height: " << block_req.block.header.height << ", ID: " << block_req.block.id;
          },
-         [&]( const rpc::chain::chain_error_response& e )
+         [&]( const rpc::chain::chain_error_response& ce )
          {
-            LOG(info) << "Error producing block: " << e.error_text;
-            LOG(info) << e.error_data;
+            KOINOS_THROW( koinos::exception, "Error while submitting block: ${e}", ("e", ce.error_text) );
          },
          [&]( const auto& p )
          {
-            LOG(error) << "Unexpected RPC response: " << p;
+            KOINOS_THROW( koinos::exception, "Unexpected RPC response while submitting block" );
          }
    }, resp );
 }
