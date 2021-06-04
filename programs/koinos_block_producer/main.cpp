@@ -1,6 +1,7 @@
 #include <csignal>
 #include <filesystem>
 #include <iostream>
+#include <thread>
 
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -8,12 +9,17 @@
 
 #include <yaml-cpp/yaml.h>
 
-#include <koinos/block_producer.hpp>
+#include <koinos/block_production/federated_producer.hpp>
+#include <koinos/block_production/pow_producer.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
+#include <koinos/mq/request_handler.hpp>
 #include <koinos/pack/classes.hpp>
 #include <koinos/pack/rt/json.hpp>
 #include <koinos/util.hpp>
+
+#define FEDERATED_ALGORITHM "federated"
+#define POW_ALGORITHM       "pow"
 
 #define HELP_OPTION        "help"
 #define BASEDIR_OPTION     "basedir"
@@ -22,11 +28,14 @@
 #define LOG_LEVEL_OPTION   "log-level"
 #define LOG_LEVEL_DEFAULT  "info"
 #define INSTANCE_ID_OPTION "instance-id"
+#define ALGORITHM_OPTION   "algorithm"
+#define JOBS_OPTION        "jobs"
+#define WORK_GROUPS_OPTION "work-groups"
 
 using namespace boost;
 using namespace koinos;
 
-constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
+using work_guard_type = boost::asio::executor_work_guard< boost::asio::io_context::executor_type >;
 
 template< typename T >
 T get_option(
@@ -58,7 +67,10 @@ int main( int argc, char** argv )
          (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
          (AMQP_OPTION       ",a", program_options::value< std::string >(), "AMQP server URL")
          (LOG_LEVEL_OPTION  ",l", program_options::value< std::string >(), "The log filtering level")
-         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance");
+         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
+         (ALGORITHM_OPTION  ",g", program_options::value< std::string >(), "The consensus algorithm to use")
+         (JOBS_OPTION       ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
+         (WORK_GROUPS_OPTION",w", program_options::value< uint64_t    >(), "The number of worker groups");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -93,6 +105,9 @@ int main( int argc, char** argv )
       auto amqp_url    = get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
       auto log_level   = get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
       auto instance_id = get_option< std::string >( INSTANCE_ID_OPTION, random_alphanumeric( 5 ), args, block_producer_config, global_config );
+      auto algorithm   = get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
+      auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
+      auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 
@@ -128,20 +143,91 @@ int main( int argc, char** argv )
          LOG(info) << "Established connection to mempool";
       }
 
-      boost::asio::io_context io_context;
-      block_producer producer( io_context, client );
-      LOG(info) << "Starting block producer...";
-      producer.start();
+      boost::asio::io_context production_context, main_context;
+      std::unique_ptr< block_production::block_producer > producer;
 
-      boost::asio::signal_set signals( io_context, SIGINT, SIGTERM );
+      if ( algorithm == FEDERATED_ALGORITHM )
+      {
+         LOG(info) << "Using " << FEDERATED_ALGORITHM << " algorithm";
+         producer = std::make_unique< block_production::federated_producer >( main_context, production_context, client );
+      }
+      else if ( algorithm == POW_ALGORITHM )
+      {
+         LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
+         KOINOS_ASSERT( jobs > 1, koinos::exception, "Jobs must be greater than 1 when using " POW_ALGORITHM " algorithm." );
+         producer = std::make_unique< block_production::pow_producer >( main_context, production_context, client, work_groups );
+         LOG(info) << "Using " << work_groups << " work groups";
+      }
+      else
+      {
+         LOG(error) << "Unrecognized consensus algorithm";
+         exit( EXIT_FAILURE );
+      }
+
+      mq::request_handler reqhandler;
+
+      ec = reqhandler.add_broadcast_handler(
+         "koinos.block.accept",
+         [&]( const std::string& msg )
+         {
+            try
+            {
+               broadcast::block_accepted bam;
+               pack::from_json( pack::json::parse( msg ), bam );
+               producer->on_block_accept( bam.block );
+            }
+            catch( const boost::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << boost::diagnostic_information( e );
+            }
+            catch( const std::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << e.what();
+            }
+         }
+      );
+
+      if ( ec != mq::error_code::success )
+      {
+         LOG(error) << "Unable to register block broadcast handler";
+         exit( EXIT_FAILURE );
+      }
+
+      LOG(info) << "Connecting AMQP request handler...";
+      ec = reqhandler.connect( amqp_url );
+      if ( ec != mq::error_code::success )
+      {
+         LOG(info) << "Unable to connect to AMQP request handler" ;
+         exit( EXIT_FAILURE );
+      }
+      LOG(info) << "Connected client to AMQP server";
+
+      reqhandler.start();
+
+      LOG(info) << "Using " << jobs << " jobs";
+      LOG(info) << "Starting block producer...";
+
+      work_guard_type production_work_guard( production_context.get_executor() );
+      work_guard_type main_work_guard( main_context.get_executor() );
+
+      boost::asio::signal_set signals( main_context, SIGINT, SIGTERM );
 
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
          LOG(info) << "Caught signal, shutting down...";
-         producer.stop();
+         production_context.stop();
+         main_context.stop();
+         reqhandler.stop();
       } );
 
-      io_context.run();
+      std::vector< std::thread > threads;
+      for ( std::size_t i = 0; i < jobs; i++ )
+         threads.emplace_back( [&]() { production_context.run(); } );
+
+      main_context.run();
+
+      for ( auto& t : threads )
+         t.join();
    }
    catch ( const boost::exception& e )
    {

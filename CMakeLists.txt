@@ -113,4 +113,6 @@ find_package(koinos_mq CONFIG REQUIRED)
 find_package(koinos_types CONFIG REQUIRED)
 find_package(koinos_util CONFIG REQUIRED)
 
+add_subdirectory(libraries)
 add_subdirectory(programs)
+
