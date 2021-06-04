@@ -46,7 +46,7 @@ private:
    block_height_type                             _last_known_height;
    boost::asio::steady_timer                     _error_timer;
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
-   std::atomic< bool >                           _producing = true;
+   std::atomic< bool >                           _hashing;
 
    void find_nonce(
       std::size_t worker_index,

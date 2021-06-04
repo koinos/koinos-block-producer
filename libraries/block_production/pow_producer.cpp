@@ -53,7 +53,7 @@ pow_producer::pow_producer(
    std::size_t worker_groups ) :
    block_producer( main_context, production_context, rpc_client ),
    _update_timer( _main_context ),
-   _error_timer( _main_context )
+   _error_timer( _production_context )
 {
    constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
    for ( std::size_t worker_index = 0; worker_index < worker_groups; worker_index++ )
@@ -79,7 +79,7 @@ void pow_producer::display_hashrate( const boost::system::error_code& ec )
    if ( ec == boost::asio::error::operation_aborted )
       return;
 
-   if ( _producing )
+   if ( _hashing )
    {
       double total_hashes = 0;
       for ( auto it = _worker_hashrate.begin(); it != _worker_hashrate.end(); ++it )
@@ -152,13 +152,13 @@ void pow_producer::produce( const boost::system::error_code& ec )
          );
       }
 
-      _producing = true;
-
       {
          auto lock = std::unique_lock< std::mutex >( _cv_mutex );
 
          bool service_was_halted = false;
          bool block_is_stale     = false;
+
+         _hashing = true;
 
          while ( !_cv.wait_for( lock, 1s, [&]()
          {
@@ -167,6 +167,8 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
             return *done || service_was_halted || block_is_stale;
          } ) );
+
+         _hashing = false;
 
          if ( service_was_halted )
             return;
@@ -199,7 +201,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
    catch ( const std::exception& e )
    {
       *done = true;
-      _producing = false;
+      _hashing = false;
 
       LOG(warning) << e.what() << ", retrying in " << _error_wait_time.load().count() << "s";
 
