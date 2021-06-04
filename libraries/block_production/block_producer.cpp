@@ -114,7 +114,7 @@ void block_producer::submit_block( protocol::block& b )
          },
          [&]( const rpc::chain::chain_error_response& ce )
          {
-            KOINOS_THROW( koinos::exception, "Error while submitting block: ${e}", ("e", ce.error_text) );
+            LOG(warning) << "Error while submitting block: " << ce.error_text;
          },
          [&]( const auto& p )
          {
