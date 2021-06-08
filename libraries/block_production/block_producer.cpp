@@ -54,6 +54,9 @@ protocol::block block_producer::next_block()
    b.header.height    = head_info.head_topology.height + 1;
    b.header.timestamp = now();
 
+   auto signer_address = _signing_key.get_public_key().to_address();
+   b.active_data->signer = variable_blob( signer_address.begin(), signer_address.end() );
+
    return b;
 }
 
