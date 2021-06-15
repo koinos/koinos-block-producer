@@ -87,7 +87,12 @@ void block_producer::fill_block( protocol::block& b )
    b.transactions.insert( b.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
 
    b.passive_data = protocol::passive_block_data();
-   b.active_data = protocol::active_block_data();
+   b.active_data  = protocol::active_block_data();
+
+   b.active_data.make_mutable();
+
+   auto signer_address   = _signing_key.get_public_key().to_address();
+   b.active_data->signer = protocol::account_type( signer_address.begin(), signer_address.end() );
 
    set_merkle_roots( b, CRYPTO_SHA2_256_ID );
 }
