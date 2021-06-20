@@ -304,9 +304,13 @@ bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
 
 void pow_producer::on_block_accept( const protocol::block& b )
 {
-   std::unique_lock< std::mutex > lock( _cv_mutex );
-   _last_known_height = b.header.height;
-   _cv.notify_one();
+   block_producer::on_block_accept( b );
+
+   {
+      std::unique_lock< std::mutex > lock( _cv_mutex );
+      _last_known_height = b.header.height;
+      _cv.notify_one();
+   }
 }
 
 } // koinos::block_production
