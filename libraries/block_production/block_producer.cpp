@@ -178,12 +178,14 @@ timestamp_type block_producer::now()
       ).count() )
    };
 
-   return _last_block_time > now ? _last_block_time : now;
+   auto last_block_time = timestamp_type{ _last_block_time };
+
+   return last_block_time > now ? last_block_time : now;
 }
 
 void block_producer::on_block_accept( const protocol::block& b )
 {
-   _last_block_time = b.header.timestamp;
+   _last_block_time = b.header.timestamp.t;
 }
 
 } // koinos::block_production
