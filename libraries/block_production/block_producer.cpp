@@ -185,7 +185,8 @@ timestamp_type block_producer::now()
 
 void block_producer::on_block_accept( const protocol::block& b )
 {
-   _last_block_time = b.header.timestamp.t;
+   if ( b.header.timestamp.t > _last_block_time )
+      _last_block_time = b.header.timestamp.t;
 }
 
 } // koinos::block_production
