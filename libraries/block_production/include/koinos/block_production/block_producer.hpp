@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include <boost/asio/io_context.hpp>
@@ -32,6 +33,7 @@ protected:
    boost::asio::io_context&         _production_context;
    std::shared_ptr< mq::client >    _rpc_client;
    crypto::private_key              _signing_key;
+   std::atomic< uint64_t >          _last_block_time = 0;
 
 private:
    void set_merkle_roots( protocol::block& block, uint64_t code, uint64_t size = 0 );

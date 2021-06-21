@@ -172,13 +172,21 @@ void block_producer::set_merkle_roots( protocol::block& block, uint64_t code, ui
 
 timestamp_type block_producer::now()
 {
-   return timestamp_type {
+   auto now = timestamp_type {
       uint64_t( std::chrono::duration_cast< std::chrono::milliseconds >(
          std::chrono::system_clock::now().time_since_epoch()
       ).count() )
    };
+
+   auto last_block_time = timestamp_type{ _last_block_time };
+
+   return last_block_time > now ? last_block_time : now;
 }
 
-void block_producer::on_block_accept( const protocol::block& b ) {}
+void block_producer::on_block_accept( const protocol::block& b )
+{
+   if ( b.header.timestamp.t > _last_block_time )
+      _last_block_time = b.header.timestamp.t;
+}
 
 } // koinos::block_production
