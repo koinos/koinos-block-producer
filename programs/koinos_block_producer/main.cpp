@@ -111,6 +111,8 @@ int main( int argc, char** argv )
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 
+      KOINOS_ASSERT( jobs > 0, koinos::exception, "Jobs must be greater than 0" );
+
       if ( config.IsNull() )
       {
          LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
@@ -154,7 +156,6 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
-         KOINOS_ASSERT( jobs > 1, koinos::exception, "Jobs must be greater than 1 when using " POW_ALGORITHM " algorithm." );
          producer = std::make_unique< block_production::pow_producer >( main_context, production_context, client, work_groups );
          LOG(info) << "Using " << work_groups << " work groups";
       }
@@ -221,7 +222,7 @@ int main( int argc, char** argv )
       } );
 
       std::vector< std::thread > threads;
-      for ( std::size_t i = 0; i < jobs; i++ )
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
          threads.emplace_back( [&]() { production_context.run(); } );
 
       main_context.run();
