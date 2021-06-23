@@ -9,15 +9,15 @@
 namespace koinos::block_production {
 
 block_producer::block_producer(
+   crypto::private_key signing_key,
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client ) :
+   _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
    _rpc_client( rpc_client )
 {
-   std::string seed = "test seed";
-   _signing_key = crypto::private_key::regenerate( crypto::hash_str( CRYPTO_SHA2_256_ID, seed.c_str(), seed.size() ) );
 }
 
 block_producer::~block_producer() = default;

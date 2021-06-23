@@ -15,10 +15,11 @@ namespace block_time
 }
 
 federated_producer::federated_producer(
+   crypto::private_key signing_key,
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client ) :
-   block_producer( main_context, production_context, rpc_client ),
+   block_producer( signing_key, main_context, production_context, rpc_client ),
    _timer( _production_context )
 {
    boost::asio::post( _production_context, std::bind( &federated_producer::produce, this, boost::system::error_code{} ) );

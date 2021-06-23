@@ -10,6 +10,7 @@ class federated_producer : public block_producer
 {
 public:
    federated_producer(
+      crypto::private_key signing_key,
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client

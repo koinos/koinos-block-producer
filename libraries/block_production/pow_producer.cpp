@@ -47,11 +47,12 @@ namespace hashrate
 }
 
 pow_producer::pow_producer(
+   crypto::private_key signing_key,
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
    std::size_t worker_groups ) :
-   block_producer( main_context, production_context, rpc_client ),
+   block_producer( signing_key, main_context, production_context, rpc_client ),
    _update_timer( _main_context ),
    _error_timer( _production_context )
 {
