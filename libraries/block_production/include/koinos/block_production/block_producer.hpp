@@ -16,6 +16,7 @@ class block_producer
 {
 public:
    block_producer(
+      crypto::private_key signing_key,
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client
@@ -32,7 +33,7 @@ protected:
    boost::asio::io_context&         _main_context;
    boost::asio::io_context&         _production_context;
    std::shared_ptr< mq::client >    _rpc_client;
-   crypto::private_key              _signing_key;
+   const crypto::private_key        _signing_key;
    std::atomic< uint64_t >          _last_block_time = 0;
 
 private:
