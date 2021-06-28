@@ -83,7 +83,7 @@ void block_producer::fill_block( protocol::block& b )
          }
    }, resp );
 
-   const uint128 max_block_resources             = 1000000000;
+   const uint128 max_block_resources             = 100'000'000;
    const std::size_t max_transactions_to_process = 100;
    uint128 block_resources                       = 0;
 
