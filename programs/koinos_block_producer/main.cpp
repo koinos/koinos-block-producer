@@ -60,11 +60,6 @@ T get_option(
    return std::move( default_value );
 }
 
-std::string default_private_key_file()
-{
-   return get_default_base_directory().string() + "/" + service::block_producer + "/" PRIVATE_KEY_FILE_DEFAULT;
-}
-
 int main( int argc, char** argv )
 {
    try
@@ -79,7 +74,7 @@ int main( int argc, char** argv )
          (ALGORITHM_OPTION       ",g", program_options::value< std::string >(), "The consensus algorithm to use")
          (JOBS_OPTION            ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
          (WORK_GROUPS_OPTION     ",w", program_options::value< uint64_t    >(), "The number of worker groups")
-         (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >()->default_value( default_private_key_file() ), "The private key file");
+         (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >(), "The private key file");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -130,7 +125,7 @@ int main( int argc, char** argv )
 
       std::filesystem::path private_key_file{ pk_file };
       if ( private_key_file.is_relative() )
-         private_key_file = basedir / private_key_file;
+         private_key_file = basedir / service::block_producer / private_key_file;
 
       KOINOS_ASSERT(
          std::filesystem::exists( private_key_file ),
@@ -256,13 +251,13 @@ int main( int argc, char** argv )
       for ( auto& t : threads )
          t.join();
    }
-   catch ( const boost::exception& e )
-   {
-      LOG(fatal) << boost::diagnostic_information( e ) << std::endl;
-   }
    catch ( const std::exception& e )
    {
       LOG(fatal) << e.what() << std::endl;
+   }
+   catch ( const boost::exception& e )
+   {
+      LOG(fatal) << boost::diagnostic_information( e ) << std::endl;
    }
    catch ( ... )
    {
