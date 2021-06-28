@@ -89,7 +89,7 @@ void block_producer::fill_block( protocol::block& b )
 
    for ( std::size_t transaction_index = 0; transaction_index < mempool.transactions.size(); transaction_index++ )
    {
-      // Only try to process a set number of blocks
+      // Only try to process a set number of transactions
       if ( transaction_index > max_transactions_to_process - 1 )
          break;
 
