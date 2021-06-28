@@ -130,7 +130,7 @@ int main( int argc, char** argv )
 
       std::filesystem::path private_key_file{ pk_file };
       if ( private_key_file.is_relative() )
-         private_key_file = basedir / private_key_file;
+         private_key_file = basedir / service::block_producer / private_key_file;
 
       KOINOS_ASSERT(
          std::filesystem::exists( private_key_file ),
