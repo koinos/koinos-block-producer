@@ -83,8 +83,32 @@ void block_producer::fill_block( protocol::block& b )
          }
    }, resp );
 
-   KOINOS_TODO( "Limit transaction inclusion via block size" );
-   b.transactions.insert( b.transactions.end(), mempool.transactions.begin(), mempool.transactions.end() );
+   const uint128 max_block_resources             = 100'000'000;
+   const std::size_t max_transactions_to_process = 100;
+   uint128 block_resources                       = 0;
+
+   for ( std::size_t transaction_index = 0; transaction_index < mempool.transactions.size(); transaction_index++ )
+   {
+      // Only try to process a set number of transactions
+      if ( transaction_index > max_transactions_to_process - 1 )
+         break;
+
+      // If we fill at least 75% of the block we proceed
+      if ( block_resources >= max_block_resources * 75 / 100 )
+         break;
+
+      auto& transaction = mempool.transactions.at( transaction_index );
+
+      transaction.active_data.unbox();
+
+      auto new_block_resources = block_resources + transaction.active_data->resource_limit;
+
+      if ( new_block_resources <= max_block_resources )
+      {
+         b.transactions.push_back( transaction );
+         block_resources = new_block_resources;
+      }
+   }
 
    b.passive_data = protocol::passive_block_data();
    b.active_data  = protocol::active_block_data();
