@@ -28,6 +28,7 @@ public:
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client,
+      contract_id_type pow_contract_id,
       std::size_t worker_groups
    );
    ~pow_producer();
@@ -48,6 +49,7 @@ private:
    boost::asio::steady_timer                     _error_timer;
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
    std::atomic< bool >                           _hashing;
+   contract_id_type                              _pow_contract_id;
 
    void find_nonce(
       std::size_t worker_index,
