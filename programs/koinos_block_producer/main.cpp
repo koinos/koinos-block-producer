@@ -34,6 +34,7 @@
 #define WORK_GROUPS_OPTION       "work-groups"
 #define PRIVATE_KEY_FILE_OPTION  "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT "private.key"
+#define POW_CONTRACT_ID          "pow-contract-id"
 
 using namespace boost;
 using namespace koinos;
@@ -74,7 +75,8 @@ int main( int argc, char** argv )
          (ALGORITHM_OPTION       ",g", program_options::value< std::string >(), "The consensus algorithm to use")
          (JOBS_OPTION            ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
          (WORK_GROUPS_OPTION     ",w", program_options::value< uint64_t    >(), "The number of worker groups")
-         (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >(), "The private key file");
+         (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >(), "The private key file")
+         (POW_CONTRACT_ID        ",c", program_options::value< std::string >(), "The PoW contract ID");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -113,6 +115,7 @@ int main( int argc, char** argv )
       auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
       auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
+      auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID, "", args, block_producer_config, global_config );
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 
@@ -177,7 +180,19 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
-         producer = std::make_unique< block_production::pow_producer >( signing_key, main_context, production_context, client, work_groups );
+         contract_id_type pow_id;
+
+         try
+         {
+            pack::json j( pow_id_str );
+            pack::from_json( j, pow_id );
+         }
+         catch ( const std::exception& ex )
+         {
+            KOINOS_THROW( koinos::exception, "Could not parse PoW contract ID: ${e}", ("e", ex.what()) );
+         }
+
+         producer = std::make_unique< block_production::pow_producer >( signing_key, main_context, production_context, client, pow_id, work_groups );
          LOG(info) << "Using " << work_groups << " work groups";
       }
       else

@@ -24,6 +24,8 @@ KOINOS_REFLECT( difficulty_metadata,
    (averaging_window)
 )
 
+const uint32_t get_difficulty_entry_point = 1249216561;
+
 struct pow_signature_data
 {
    koinos::uint256          nonce;
@@ -51,8 +53,10 @@ pow_producer::pow_producer(
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
+   contract_id_type pow_contract_id,
    std::size_t worker_groups ) :
    block_producer( signing_key, main_context, production_context, rpc_client ),
+   _pow_contract_id( pow_contract_id ),
    _update_timer( _main_context ),
    _error_timer( _production_context )
 {
@@ -263,8 +267,8 @@ void pow_producer::find_nonce(
 uint256_t pow_producer::get_difficulty()
 {
    rpc::chain::read_contract_request req;
-   req.contract_id = pack::from_variable_blob< contract_id_type >( pack::to_variable_blob( uint160_t( 1 ) ) );
-   req.entry_point = 1249216561;
+   req.contract_id = _pow_contract_id;
+   req.entry_point = get_difficulty_entry_point;
 
    pack::json j;
    pack::to_json( j, rpc::chain::chain_rpc_request{ req } );

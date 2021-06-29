@@ -50,4 +50,3 @@ void federated_producer::produce( const boost::system::error_code& ec )
 }
 
 } // koinos::block_production
-
