@@ -34,7 +34,7 @@
 #define WORK_GROUPS_OPTION       "work-groups"
 #define PRIVATE_KEY_FILE_OPTION  "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT "private.key"
-#define POW_CONTRACT_ID          "pow-contract-id"
+#define POW_CONTRACT_ID_OPTION   "pow-contract-id"
 
 using namespace boost;
 using namespace koinos;
@@ -76,7 +76,7 @@ int main( int argc, char** argv )
          (JOBS_OPTION            ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
          (WORK_GROUPS_OPTION     ",w", program_options::value< uint64_t    >(), "The number of worker groups")
          (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >(), "The private key file")
-         (POW_CONTRACT_ID        ",c", program_options::value< std::string >(), "The PoW contract ID");
+         (POW_CONTRACT_ID_OPTION ",c", program_options::value< std::string >(), "The PoW contract ID");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -115,7 +115,7 @@ int main( int argc, char** argv )
       auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
       auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
-      auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID, "", args, block_producer_config, global_config );
+      auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 

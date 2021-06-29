@@ -49,7 +49,7 @@ private:
    boost::asio::steady_timer                     _error_timer;
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
    std::atomic< bool >                           _hashing;
-   contract_id_type                              _pow_contract_id;
+   const contract_id_type                        _pow_contract_id;
 
    void find_nonce(
       std::size_t worker_index,
