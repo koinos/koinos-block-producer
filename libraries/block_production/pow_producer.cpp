@@ -9,6 +9,8 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
 
+#define TARGET_BLOCK_INTERVAL_MS 10000
+
 struct difficulty_metadata
 {
    koinos::uint256        current_difficulty = 0;
@@ -46,6 +48,63 @@ namespace hashrate
    constexpr double kilohash = 1.0e3;
 
    constexpr std::chrono::seconds update_interval = 2s;
+}
+
+std::string uint256_to_hex( const koinos::uint256_t& x )
+{
+   std::vector<uint8_t> v;
+   std::string result;
+   char digit[] = "0123456789abcdef";
+
+   // msv_first = true means it's exported in big-endian bit order
+   boost::multiprecision::export_bits(x, std::back_inserter(v), 8);
+   size_t n = v.size();
+   for( size_t i=0; i<v.size(); i++ )
+   {
+      uint8_t c = v[i];
+      result += digit[(c >> 4) & 0x0f];
+      result += digit[ c       & 0x0f];
+   }
+   return result;
+}
+
+std::string hashrate_to_string( double hashrate )
+{
+   std::string suffix = "H/s";
+
+   if ( hashrate > hashrate::terahash )
+   {
+      hashrate /= hashrate::terahash;
+      suffix = "TH/s";
+   }
+   else if ( hashrate > hashrate::gigahash )
+   {
+      hashrate /= hashrate::gigahash;
+      suffix = "GH/s";
+   }
+   else if ( hashrate > hashrate::megahash )
+   {
+      hashrate /= hashrate::megahash;
+      suffix = "MH/s";
+   }
+   else if ( hashrate > hashrate::kilohash )
+   {
+      hashrate /= hashrate::kilohash;
+      suffix = "KH/s";
+   }
+   return std::to_string(hashrate) + " " + suffix;
+}
+
+std::string compute_network_hashrate( const koinos::uint256_t& difficulty )
+{
+   double diff = difficulty.convert_to<double>();
+   double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
+   double tries_to_produce = one / diff;
+
+   double target_block_interval_s = TARGET_BLOCK_INTERVAL_MS / 1000.0;
+   double tries_per_second = tries_to_produce / target_block_interval_s;
+
+   return hashrate_to_string(tries_per_second);
 }
 
 pow_producer::pow_producer(
@@ -91,30 +150,8 @@ void pow_producer::display_hashrate( const boost::system::error_code& ec )
          total_hashes += it->second.load();
 
       total_hashes /= hashrate::update_interval.count();
-      std::string suffix = "H/s";
 
-      if ( total_hashes > hashrate::terahash )
-      {
-         total_hashes /= hashrate::terahash;
-         suffix = "TH/s";
-      }
-      else if ( total_hashes > hashrate::gigahash )
-      {
-         total_hashes /= hashrate::gigahash;
-         suffix = "GH/s";
-      }
-      else if ( total_hashes > hashrate::megahash )
-      {
-         total_hashes /= hashrate::megahash;
-         suffix = "MH/s";
-      }
-      else if ( total_hashes > hashrate::kilohash )
-      {
-         total_hashes /= hashrate::kilohash;
-         suffix = "KH/s";
-      }
-
-      LOG(info) << "Hashrate: " << total_hashes << " " << suffix;
+      LOG(info) << "Hashrate: " << hashrate_to_string( total_hashes );
    }
 
    _update_timer.expires_from_now( hashrate::update_interval );
@@ -136,7 +173,8 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto difficulty = get_difficulty();
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
-      LOG(info) << "Received difficulty: " << difficulty;
+      LOG(info) << "Received difficulty target: 0x" << uint256_to_hex(difficulty);
+      LOG(info) << "Network hashrate (MH/s): " << compute_network_hashrate(difficulty);
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
