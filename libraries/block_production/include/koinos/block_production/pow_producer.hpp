@@ -20,6 +20,8 @@ using boost::multiprecision::uint256_t;
 using worker_group_type = std::pair< uint256_t, uint256_t >;
 using hash_count_type   = std::atomic< uint64_t >;
 
+struct difficulty_metadata;
+
 class pow_producer : public block_producer
 {
 public:
@@ -61,7 +63,7 @@ private:
       std::shared_ptr< std::atomic< bool > > done
    );
    bool difficulty_met( const multihash& hash, uint256_t difficulty );
-   uint256_t get_difficulty();
+   void get_difficulty_meta( difficulty_metadata& meta );
 };
 
 } // koinos::block_production

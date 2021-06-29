@@ -9,7 +9,7 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
 
-#define TARGET_BLOCK_INTERVAL_MS 10000
+namespace koinos::block_production {
 
 struct difficulty_metadata
 {
@@ -19,13 +19,6 @@ struct difficulty_metadata
    koinos::uint32         averaging_window   = 0;
 };
 
-KOINOS_REFLECT( difficulty_metadata,
-   (current_difficulty)
-   (last_block_time)
-   (block_window_time)
-   (averaging_window)
-)
-
 const uint32_t get_difficulty_entry_point = 1249216561;
 
 struct pow_signature_data
@@ -34,7 +27,16 @@ struct pow_signature_data
    koinos::fixed_blob< 65 > recoverable_signature;
 };
 
-KOINOS_REFLECT( pow_signature_data, (nonce)(recoverable_signature) )
+}
+
+KOINOS_REFLECT( koinos::block_production::difficulty_metadata,
+   (current_difficulty)
+   (last_block_time)
+   (block_window_time)
+   (averaging_window)
+)
+
+KOINOS_REFLECT( koinos::block_production::pow_signature_data, (nonce)(recoverable_signature) )
 
 using namespace std::chrono_literals;
 
@@ -59,7 +61,10 @@ std::string uint256_to_hex( const koinos::uint256_t& x )
    // msv_first = true means it's exported in big-endian bit order
    boost::multiprecision::export_bits(x, std::back_inserter(v), 8);
    size_t n = v.size();
-   for( size_t i=0; i<v.size(); i++ )
+   // Boost will truncate leading zeros
+   for( size_t i=n; i<(256/8); i++ )
+      result += "00";
+   for( size_t i=0; i<n; i++ )
    {
       uint8_t c = v[i];
       result += digit[(c >> 4) & 0x0f];
@@ -95,14 +100,21 @@ std::string hashrate_to_string( double hashrate )
    return std::to_string(hashrate) + " " + suffix;
 }
 
-std::string compute_network_hashrate( const koinos::uint256_t& difficulty )
+std::string compute_network_hashrate( const difficulty_metadata& meta )
 {
-   double diff = difficulty.convert_to<double>();
+   // The resolution of timestamps.
+   double timestamp_s = 0.001;
+
+   double diff = meta.current_difficulty.convert_to<double>();
    double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
    double tries_to_produce = one / diff;
 
-   double target_block_interval_s = TARGET_BLOCK_INTERVAL_MS / 1000.0;
-   double tries_per_second = tries_to_produce / target_block_interval_s;
+   double averaging_window = meta.averaging_window;
+   if( averaging_window < 1.0 )
+      averaging_window = 1.0;
+   double block_interval_ts = (meta.block_window_time / averaging_window);
+   double block_interval_s = block_interval_ts * timestamp_s;
+   double tries_per_second = tries_to_produce / block_interval_s;
 
    return hashrate_to_string(tries_per_second);
 }
@@ -170,11 +182,13 @@ void pow_producer::produce( const boost::system::error_code& ec )
    {
       auto block = next_block();
       fill_block( block );
-      auto difficulty = get_difficulty();
+      difficulty_metadata difficulty_meta;
+      get_difficulty_meta( difficulty_meta );
+      uint256_t difficulty = difficulty_meta.current_difficulty;
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
       LOG(info) << "Received difficulty target: 0x" << uint256_to_hex(difficulty);
-      LOG(info) << "Network hashrate (MH/s): " << compute_network_hashrate(difficulty);
+      LOG(info) << "Network hashrate: " << compute_network_hashrate(difficulty_meta);
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
@@ -302,7 +316,7 @@ void pow_producer::find_nonce(
    }
 }
 
-uint256_t pow_producer::get_difficulty()
+void pow_producer::get_difficulty_meta(difficulty_metadata& meta)
 {
    rpc::chain::read_contract_request req;
    req.contract_id = _pow_contract_id;
@@ -332,9 +346,7 @@ uint256_t pow_producer::get_difficulty()
          }
    }, resp );
 
-   auto metadata = pack::from_variable_blob< difficulty_metadata >( contract_response.result );
-
-   return metadata.current_difficulty;
+   meta = pack::from_variable_blob< difficulty_metadata >( contract_response.result );
 }
 
 bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
