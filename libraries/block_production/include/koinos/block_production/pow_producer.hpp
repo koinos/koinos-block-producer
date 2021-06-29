@@ -12,6 +12,8 @@
 #include <koinos/block_production/block_producer.hpp>
 #include <koinos/pack/classes.hpp>
 
+struct difficulty_metadata;
+
 namespace koinos::block_production {
 
 using boost::multiprecision::uint512_t;
@@ -19,8 +21,6 @@ using boost::multiprecision::uint256_t;
 
 using worker_group_type = std::pair< uint256_t, uint256_t >;
 using hash_count_type   = std::atomic< uint64_t >;
-
-struct difficulty_metadata;
 
 class pow_producer : public block_producer
 {
@@ -63,7 +63,9 @@ private:
       std::shared_ptr< std::atomic< bool > > done
    );
    bool difficulty_met( const multihash& hash, uint256_t difficulty );
-   void get_difficulty_meta( difficulty_metadata& meta );
+   difficulty_metadata get_difficulty_meta();
+   std::string hashrate_to_string( double hashrate );
+   std::string compute_network_hashrate( const difficulty_metadata& meta );
 };
 
 } // koinos::block_production

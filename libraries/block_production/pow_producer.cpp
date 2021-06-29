@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <chrono>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 #include <boost/asio/post.hpp>
 
@@ -8,8 +10,6 @@
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
-
-namespace koinos::block_production {
 
 struct difficulty_metadata
 {
@@ -19,7 +19,12 @@ struct difficulty_metadata
    koinos::uint32         averaging_window   = 0;
 };
 
-const uint32_t get_difficulty_entry_point = 1249216561;
+KOINOS_REFLECT( difficulty_metadata,
+   (current_difficulty)
+   (last_block_time)
+   (block_window_time)
+   (averaging_window)
+)
 
 struct pow_signature_data
 {
@@ -27,16 +32,9 @@ struct pow_signature_data
    koinos::fixed_blob< 65 > recoverable_signature;
 };
 
-}
+KOINOS_REFLECT( pow_signature_data, (nonce)(recoverable_signature) )
 
-KOINOS_REFLECT( koinos::block_production::difficulty_metadata,
-   (current_difficulty)
-   (last_block_time)
-   (block_window_time)
-   (averaging_window)
-)
-
-KOINOS_REFLECT( koinos::block_production::pow_signature_data, (nonce)(recoverable_signature) )
+const uint32_t get_difficulty_entry_point = 1249216561;
 
 using namespace std::chrono_literals;
 
@@ -50,73 +48,6 @@ namespace hashrate
    constexpr double kilohash = 1.0e3;
 
    constexpr std::chrono::seconds update_interval = 2s;
-}
-
-std::string uint256_to_hex( const koinos::uint256_t& x )
-{
-   std::vector<uint8_t> v;
-   std::string result;
-   char digit[] = "0123456789abcdef";
-
-   // msv_first = true means it's exported in big-endian bit order
-   boost::multiprecision::export_bits(x, std::back_inserter(v), 8);
-   size_t n = v.size();
-   // Boost will truncate leading zeros
-   for( size_t i=n; i<(256/8); i++ )
-      result += "00";
-   for( size_t i=0; i<n; i++ )
-   {
-      uint8_t c = v[i];
-      result += digit[(c >> 4) & 0x0f];
-      result += digit[ c       & 0x0f];
-   }
-   return result;
-}
-
-std::string hashrate_to_string( double hashrate )
-{
-   std::string suffix = "H/s";
-
-   if ( hashrate > hashrate::terahash )
-   {
-      hashrate /= hashrate::terahash;
-      suffix = "TH/s";
-   }
-   else if ( hashrate > hashrate::gigahash )
-   {
-      hashrate /= hashrate::gigahash;
-      suffix = "GH/s";
-   }
-   else if ( hashrate > hashrate::megahash )
-   {
-      hashrate /= hashrate::megahash;
-      suffix = "MH/s";
-   }
-   else if ( hashrate > hashrate::kilohash )
-   {
-      hashrate /= hashrate::kilohash;
-      suffix = "KH/s";
-   }
-   return std::to_string(hashrate) + " " + suffix;
-}
-
-std::string compute_network_hashrate( const difficulty_metadata& meta )
-{
-   // The resolution of timestamps.
-   double timestamp_s = 0.001;
-
-   double diff = meta.current_difficulty.convert_to<double>();
-   double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
-   double tries_to_produce = one / diff;
-
-   double averaging_window = meta.averaging_window;
-   if( averaging_window < 1.0 )
-      averaging_window = 1.0;
-   double block_interval_ts = (meta.block_window_time / averaging_window);
-   double block_interval_s = block_interval_ts * timestamp_s;
-   double tries_per_second = tries_to_produce / block_interval_s;
-
-   return hashrate_to_string(tries_per_second);
 }
 
 pow_producer::pow_producer(
@@ -182,13 +113,12 @@ void pow_producer::produce( const boost::system::error_code& ec )
    {
       auto block = next_block();
       fill_block( block );
-      difficulty_metadata difficulty_meta;
-      get_difficulty_meta( difficulty_meta );
-      uint256_t difficulty = difficulty_meta.current_difficulty;
+      auto diff_meta = get_difficulty_meta();
+      uint256_t difficulty = diff_meta.current_difficulty;
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
-      LOG(info) << "Received difficulty target: 0x" << uint256_to_hex(difficulty);
-      LOG(info) << "Network hashrate: " << compute_network_hashrate(difficulty_meta);
+      LOG(info) << "Received difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << difficulty;
+      LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
@@ -316,7 +246,7 @@ void pow_producer::find_nonce(
    }
 }
 
-void pow_producer::get_difficulty_meta(difficulty_metadata& meta)
+difficulty_metadata pow_producer::get_difficulty_meta()
 {
    rpc::chain::read_contract_request req;
    req.contract_id = _pow_contract_id;
@@ -346,7 +276,7 @@ void pow_producer::get_difficulty_meta(difficulty_metadata& meta)
          }
    }, resp );
 
-   meta = pack::from_variable_blob< difficulty_metadata >( contract_response.result );
+   return pack::from_variable_blob< difficulty_metadata >( contract_response.result );
 }
 
 bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
@@ -366,6 +296,53 @@ void pow_producer::on_block_accept( const protocol::block& b )
       _last_known_height = b.header.height;
       _cv.notify_one();
    }
+}
+
+std::string pow_producer::hashrate_to_string( double hashrate )
+{
+   std::string suffix = "H/s";
+
+   if ( hashrate > hashrate::terahash )
+   {
+      hashrate /= hashrate::terahash;
+      suffix = "TH/s";
+   }
+   else if ( hashrate > hashrate::gigahash )
+   {
+      hashrate /= hashrate::gigahash;
+      suffix = "GH/s";
+   }
+   else if ( hashrate > hashrate::megahash )
+   {
+      hashrate /= hashrate::megahash;
+      suffix = "MH/s";
+   }
+   else if ( hashrate > hashrate::kilohash )
+   {
+      hashrate /= hashrate::kilohash;
+      suffix = "KH/s";
+   }
+
+   return std::to_string( hashrate ) + " " + suffix;
+}
+
+std::string pow_producer::compute_network_hashrate( const difficulty_metadata& meta )
+{
+   // The resolution of timestamps.
+   double timestamp_s = 0.001;
+
+   double diff = meta.current_difficulty.convert_to<double>();
+   double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
+   double tries_to_produce = one / diff;
+
+   double averaging_window = meta.averaging_window;
+   if( averaging_window < 1.0 )
+      averaging_window = 1.0;
+   double block_interval_ts = (meta.block_window_time / averaging_window);
+   double block_interval_s = block_interval_ts * timestamp_s;
+   double tries_per_second = tries_to_produce / block_interval_s;
+
+   return hashrate_to_string(tries_per_second);
 }
 
 } // koinos::block_production
