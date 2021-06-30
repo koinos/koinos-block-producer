@@ -27,7 +27,7 @@ struct pow_signature_data
    koinos::fixed_blob< 65 > recoverable_signature;
 };
 
-}
+} // koinos::block_production
 
 KOINOS_REFLECT( koinos::block_production::difficulty_metadata,
    (current_difficulty)
@@ -50,27 +50,6 @@ namespace hashrate
    constexpr double kilohash = 1.0e3;
 
    constexpr std::chrono::seconds update_interval = 2s;
-}
-
-std::string uint256_to_hex( const koinos::uint256_t& x )
-{
-   std::vector<uint8_t> v;
-   std::string result;
-   char digit[] = "0123456789abcdef";
-
-   // msv_first = true means it's exported in big-endian bit order
-   boost::multiprecision::export_bits(x, std::back_inserter(v), 8);
-   size_t n = v.size();
-   // Boost will truncate leading zeros
-   for( size_t i=n; i<(256/8); i++ )
-      result += "00";
-   for( size_t i=0; i<n; i++ )
-   {
-      uint8_t c = v[i];
-      result += digit[(c >> 4) & 0x0f];
-      result += digit[ c       & 0x0f];
-   }
-   return result;
 }
 
 std::string hashrate_to_string( double hashrate )
@@ -103,20 +82,11 @@ std::string hashrate_to_string( double hashrate )
 std::string compute_network_hashrate( const difficulty_metadata& meta )
 {
    // The resolution of timestamps.
-   double timestamp_s = 0.001;
+   constexpr double timestamp_s = 0.001;
 
-   double diff = meta.current_difficulty.convert_to<double>();
-   double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
-   double tries_to_produce = one / diff;
+   auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / meta.current_difficulty ) * meta.averaging_window ) / uint64_t( meta.block_window_time );
 
-   double averaging_window = meta.averaging_window;
-   if( averaging_window < 1.0 )
-      averaging_window = 1.0;
-   double block_interval_ts = (meta.block_window_time / averaging_window);
-   double block_interval_s = block_interval_ts * timestamp_s;
-   double tries_per_second = tries_to_produce / block_interval_s;
-
-   return hashrate_to_string(tries_per_second);
+   return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
 }
 
 pow_producer::pow_producer(
@@ -187,8 +157,8 @@ void pow_producer::produce( const boost::system::error_code& ec )
       uint256_t difficulty = difficulty_meta.current_difficulty;
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
-      LOG(info) << "Received difficulty target: 0x" << uint256_to_hex(difficulty);
-      LOG(info) << "Network hashrate: " << compute_network_hashrate(difficulty_meta);
+      LOG(info) << "Received difficulty target: 0x" << std::setfill('0') << std::setw(64) << std::hex << difficulty;
+      LOG(info) << "Estimated network hashrate: " << compute_network_hashrate(difficulty_meta);
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
       {
