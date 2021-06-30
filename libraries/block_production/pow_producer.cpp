@@ -2,7 +2,6 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 
 #include <boost/asio/post.hpp>
 
@@ -117,7 +116,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       uint256_t difficulty = diff_meta.current_difficulty;
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
-      LOG(info) << "Received difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << difficulty;
+      LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << difficulty;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
