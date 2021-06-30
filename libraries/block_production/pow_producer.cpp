@@ -328,20 +328,9 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 std::string pow_producer::compute_network_hashrate( const difficulty_metadata& meta )
 {
    // The resolution of timestamps.
-   double timestamp_s = 0.001;
-
-   double diff = meta.current_difficulty.convert_to<double>();
-   double one = std::numeric_limits< uint256_t >::max().convert_to<double>();
-   double tries_to_produce = one / diff;
-
-   double averaging_window = meta.averaging_window;
-   if( averaging_window < 1.0 )
-      averaging_window = 1.0;
-   double block_interval_ts = (meta.block_window_time / averaging_window);
-   double block_interval_s = block_interval_ts * timestamp_s;
-   double tries_per_second = tries_to_produce / block_interval_s;
-
-   return hashrate_to_string(tries_per_second);
+   constexpr double timestamp_s = 0.001;
+   auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / meta.current_difficulty ) * meta.averaging_window ) / uint64_t( meta.block_window_time );
+   return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
 }
 
 } // koinos::block_production
