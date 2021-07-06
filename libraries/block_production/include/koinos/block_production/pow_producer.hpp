@@ -5,6 +5,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <variant>
 
 #include <boost/asio/steady_timer.hpp>
 #include <boost/multiprecision/cpp_int.hpp>
@@ -12,7 +13,11 @@
 #include <koinos/block_production/block_producer.hpp>
 #include <koinos/pack/classes.hpp>
 
-struct difficulty_metadata;
+struct difficulty_metadata_v1;
+struct difficulty_metadata_v2;
+using difficulty_metadata = std::variant<
+   difficulty_metadata_v1,
+   difficulty_metadata_v2 >;
 
 namespace koinos::block_production {
 
