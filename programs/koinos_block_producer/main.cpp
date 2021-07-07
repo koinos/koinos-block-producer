@@ -19,22 +19,24 @@
 #include <koinos/pack/rt/json.hpp>
 #include <koinos/util.hpp>
 
-#define FEDERATED_ALGORITHM      "federated"
-#define POW_ALGORITHM            "pow"
+#define FEDERATED_ALGORITHM                "federated"
+#define POW_ALGORITHM                      "pow"
 
-#define HELP_OPTION              "help"
-#define BASEDIR_OPTION           "basedir"
-#define AMQP_OPTION              "amqp"
-#define AMQP_DEFAULT             "amqp://guest:guest@localhost:5672/"
-#define LOG_LEVEL_OPTION         "log-level"
-#define LOG_LEVEL_DEFAULT        "info"
-#define INSTANCE_ID_OPTION       "instance-id"
-#define ALGORITHM_OPTION         "algorithm"
-#define JOBS_OPTION              "jobs"
-#define WORK_GROUPS_OPTION       "work-groups"
-#define PRIVATE_KEY_FILE_OPTION  "private-key-file"
-#define PRIVATE_KEY_FILE_DEFAULT "private.key"
-#define POW_CONTRACT_ID_OPTION   "pow-contract-id"
+#define HELP_OPTION                        "help"
+#define BASEDIR_OPTION                     "basedir"
+#define AMQP_OPTION                        "amqp"
+#define AMQP_DEFAULT                       "amqp://guest:guest@localhost:5672/"
+#define LOG_LEVEL_OPTION                   "log-level"
+#define LOG_LEVEL_DEFAULT                  "info"
+#define INSTANCE_ID_OPTION                 "instance-id"
+#define ALGORITHM_OPTION                   "algorithm"
+#define JOBS_OPTION                        "jobs"
+#define WORK_GROUPS_OPTION                 "work-groups"
+#define PRIVATE_KEY_FILE_OPTION            "private-key-file"
+#define PRIVATE_KEY_FILE_DEFAULT           "private.key"
+#define POW_CONTRACT_ID_OPTION             "pow-contract-id"
+#define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
+#define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
 
 using namespace boost;
 using namespace koinos;
@@ -67,16 +69,19 @@ int main( int argc, char** argv )
    {
       program_options::options_description options;
       options.add_options()
-         (HELP_OPTION            ",h", "Print this help message and exit.")
-         (BASEDIR_OPTION         ",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
-         (AMQP_OPTION            ",a", program_options::value< std::string >(), "AMQP server URL")
-         (LOG_LEVEL_OPTION       ",l", program_options::value< std::string >(), "The log filtering level")
-         (INSTANCE_ID_OPTION     ",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
-         (ALGORITHM_OPTION       ",g", program_options::value< std::string >(), "The consensus algorithm to use")
-         (JOBS_OPTION            ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
-         (WORK_GROUPS_OPTION     ",w", program_options::value< uint64_t    >(), "The number of worker groups")
-         (PRIVATE_KEY_FILE_OPTION",p", program_options::value< std::string >(), "The private key file")
-         (POW_CONTRACT_ID_OPTION ",c", program_options::value< std::string >(), "The PoW contract ID");
+         (HELP_OPTION                      ",h", "Print this help message and exit.")
+         (BASEDIR_OPTION                   ",d",
+            program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
+         (AMQP_OPTION                      ",a", program_options::value< std::string >(), "AMQP server URL")
+         (LOG_LEVEL_OPTION                 ",l", program_options::value< std::string >(), "The log filtering level")
+         (INSTANCE_ID_OPTION               ",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
+         (ALGORITHM_OPTION                 ",g", program_options::value< std::string >(), "The consensus algorithm to use")
+         (JOBS_OPTION                      ",j", program_options::value< uint64_t    >(), "The number of worker jobs")
+         (WORK_GROUPS_OPTION               ",w", program_options::value< uint64_t    >(), "The number of worker groups")
+         (PRIVATE_KEY_FILE_OPTION          ",p", program_options::value< std::string >(), "The private key file")
+         (POW_CONTRACT_ID_OPTION           ",c", program_options::value< std::string >(), "The PoW contract ID")
+         (STALE_PRODUCTION_THRESHOLD_OPTION",s",
+            program_options::value< int64_t >(), "The distance of time in seconds from head where production should begin (-1 to disable)");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -117,7 +122,22 @@ int main( int argc, char** argv )
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
 
+      auto production_threshold = get_option< int64_t >(
+         STALE_PRODUCTION_THRESHOLD_OPTION,
+         STALE_PRODUCTION_THRESHOLD_DEFAULT,
+         args,
+         block_producer_config,
+         global_config
+      );
+
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
+
+      KOINOS_ASSERT(
+         production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
+         koinos::exception,
+         "Stale block production threshold would overflow, maximum value: ${v}",
+         ("v", std::numeric_limits< int64_t >::max() / 1000)
+      );
 
       KOINOS_ASSERT( jobs > 0, koinos::exception, "Jobs must be greater than 0" );
 
@@ -175,7 +195,13 @@ int main( int argc, char** argv )
       if ( algorithm == FEDERATED_ALGORITHM )
       {
          LOG(info) << "Using " << FEDERATED_ALGORITHM << " algorithm";
-         producer = std::make_unique< block_production::federated_producer >( signing_key, main_context, production_context, client );
+         producer = std::make_unique< block_production::federated_producer >(
+            signing_key,
+            main_context,
+            production_context,
+            client,
+            production_threshold
+         );
       }
       else if ( algorithm == POW_ALGORITHM )
       {
@@ -192,7 +218,16 @@ int main( int argc, char** argv )
             KOINOS_THROW( koinos::exception, "Could not parse PoW contract ID: ${e}", ("e", ex.what()) );
          }
 
-         producer = std::make_unique< block_production::pow_producer >( signing_key, main_context, production_context, client, pow_id, work_groups );
+         producer = std::make_unique< block_production::pow_producer >(
+            signing_key,
+            main_context,
+            production_context,
+            client,
+            production_threshold,
+            pow_id,
+            work_groups
+         );
+
          LOG(info) << "Using " << work_groups << " work groups";
       }
       else
@@ -243,6 +278,8 @@ int main( int argc, char** argv )
 
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
+
+      producer->start();
 
       work_guard_type production_work_guard( production_context.get_executor() );
       work_guard_type main_work_guard( main_context.get_executor() );
