@@ -44,10 +44,6 @@ KOINOS_REFLECT( difficulty_metadata_v2,
    (target_block_interval)
 )
 
-//using difficulty_metadata = std::variant<
-//   difficulty_metadata_v1,
-//   difficulty_metadata_v2 >;
-
 struct pow_signature_data
 {
    koinos::uint256          nonce;
@@ -361,8 +357,6 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 
 std::string pow_producer::compute_network_hashrate( const difficulty_metadata& meta )
 {
-   std::string result;
-
    return std::visit( koinos::overloaded {
       [&]( const difficulty_metadata_v1& m ) {
          // The resolution of timestamps.
