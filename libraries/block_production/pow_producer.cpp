@@ -10,19 +10,38 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/pack/classes.hpp>
 
-struct difficulty_metadata
+struct difficulty_metadata_v1
 {
-   koinos::uint256        current_difficulty = 0;
+   koinos::uint256        difficulty_target = 0;
    koinos::timestamp_type last_block_time    = koinos::timestamp_type( 0 );
    koinos::timestamp_type block_window_time  = koinos::timestamp_type( 0 );
    koinos::uint32         averaging_window   = 0;
 };
 
-KOINOS_REFLECT( difficulty_metadata,
-   (current_difficulty)
+KOINOS_REFLECT( difficulty_metadata_v1,
+   (difficulty_target)
    (last_block_time)
    (block_window_time)
    (averaging_window)
+)
+
+struct difficulty_metadata_v2
+{
+   koinos::uint256_t      difficulty_target = 0;
+   koinos::timestamp_type last_block_time = koinos::timestamp_type( 0 );
+   koinos::uint64         required_hc = 0;
+   koinos::uint128_t      hc_reserve;
+   koinos::uint128_t      us_reserve;
+   koinos::timestamp_type target_block_interval = koinos::timestamp_type( 1 );
+};
+
+KOINOS_REFLECT( difficulty_metadata_v2,
+   (difficulty_target)
+   (last_block_time)
+   (required_hc)
+   (hc_reserve)
+   (us_reserve)
+   (target_block_interval)
 )
 
 struct pow_signature_data
@@ -113,7 +132,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      uint256_t difficulty = diff_meta.current_difficulty;
+      uint256_t difficulty = std::visit( [](auto&& m){ return m.difficulty_target; }, diff_meta );
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << difficulty;
@@ -275,7 +294,18 @@ difficulty_metadata pow_producer::get_difficulty_meta()
          }
    }, resp );
 
-   return pack::from_variable_blob< difficulty_metadata >( contract_response.result );
+   difficulty_metadata meta;
+
+   try
+   {
+      meta = pack::from_variable_blob< difficulty_metadata_v2 >( contract_response.result );
+   }
+   catch ( ... )
+   {
+      meta = pack::from_variable_blob< difficulty_metadata_v1 >( contract_response.result );
+   }
+
+   return meta;
 }
 
 bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
@@ -327,10 +357,18 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 
 std::string pow_producer::compute_network_hashrate( const difficulty_metadata& meta )
 {
-   // The resolution of timestamps.
-   constexpr double timestamp_s = 0.001;
-   auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / meta.current_difficulty ) * meta.averaging_window ) / uint64_t( meta.block_window_time );
-   return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
+   return std::visit( koinos::overloaded {
+      [&]( const difficulty_metadata_v1& m ) {
+         // The resolution of timestamps.
+         constexpr double timestamp_s = 0.001;
+         auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / m.difficulty_target ) * m.averaging_window ) / uint64_t( m.block_window_time );
+         return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
+      },
+      [&]( const difficulty_metadata_v2& m ) {
+         auto hashrate = m.required_hc / uint64_t( m.target_block_interval );
+         return hashrate_to_string( double( hashrate ) );
+      }
+   }, meta );
 }
 
 } // koinos::block_production
