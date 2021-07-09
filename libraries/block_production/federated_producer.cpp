@@ -57,6 +57,4 @@ void federated_producer::halt()
    _timer.cancel();
 }
 
-void federated_producer::prepare() {}
-
 } // koinos::block_production

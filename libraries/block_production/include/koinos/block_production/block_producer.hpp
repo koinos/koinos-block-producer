@@ -25,14 +25,12 @@ public:
    virtual ~block_producer();
 
    virtual void on_block_accept( const protocol::block& b );
-   void start();
 
 protected:
    protocol::block next_block();
    void fill_block( protocol::block& b );
    void submit_block( protocol::block& b );
 
-   virtual void prepare()  = 0;
    virtual void commence() = 0;
    virtual void halt()     = 0;
 
@@ -45,6 +43,7 @@ protected:
    const int64_t                    _production_threshold;
 
 private:
+   void on_run( const boost::system::error_code& ec );
    void set_merkle_roots( protocol::block& block, uint64_t code, uint64_t size = 0 );
    timestamp_type now();
 };

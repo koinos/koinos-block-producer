@@ -61,11 +61,7 @@ pow_producer::pow_producer(
    _pow_contract_id( pow_contract_id ),
    _update_timer( _main_context ),
    _error_timer( _production_context ),
-   _num_worker_groups( worker_groups ) {}
-
-pow_producer::~pow_producer() = default;
-
-void pow_producer::prepare()
+   _num_worker_groups( worker_groups )
 {
    constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
    for ( std::size_t worker_index = 0; worker_index < _num_worker_groups; worker_index++ )
@@ -79,6 +75,8 @@ void pow_producer::prepare()
       LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
    }
 }
+
+pow_producer::~pow_producer() = default;
 
 void pow_producer::display_hashrate( const boost::system::error_code& ec )
 {

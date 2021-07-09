@@ -39,7 +39,6 @@ public:
    virtual void on_block_accept( const protocol::block& b ) override;
 
 protected:
-   void prepare() override;
    void commence() override;
    void halt() override;
 

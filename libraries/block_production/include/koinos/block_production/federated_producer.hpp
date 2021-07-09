@@ -21,7 +21,6 @@ public:
    ~federated_producer();
 
 protected:
-   void prepare() override;
    void commence() override;
    void halt() override;
 

@@ -279,8 +279,6 @@ int main( int argc, char** argv )
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
 
-      producer->start();
-
       work_guard_type production_work_guard( production_context.get_executor() );
       work_guard_type main_work_guard( main_context.get_executor() );
 

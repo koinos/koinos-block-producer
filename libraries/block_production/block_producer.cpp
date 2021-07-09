@@ -1,5 +1,7 @@
 #include <koinos/block_production/block_producer.hpp>
 
+#include <boost/asio/post.hpp>
+
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/mq/util.hpp>
@@ -18,13 +20,20 @@ block_producer::block_producer(
    _main_context( main_context ),
    _production_context( production_context ),
    _rpc_client( rpc_client ),
-   _production_threshold( production_threshold ) {}
+   _production_threshold( production_threshold )
+{
+   boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
+}
 
 block_producer::~block_producer() = default;
 
-void block_producer::start()
+void block_producer::on_run( const boost::system::error_code& ec )
 {
-   prepare();
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
+   if ( !_halted )
+      return;
 
    if ( _production_threshold < 0 )
    {
