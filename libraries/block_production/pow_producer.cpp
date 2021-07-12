@@ -69,28 +69,26 @@ pow_producer::pow_producer(
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
+   int64_t production_threshold,
    contract_id_type pow_contract_id,
    std::size_t worker_groups ) :
-   block_producer( signing_key, main_context, production_context, rpc_client ),
+   block_producer( signing_key, main_context, production_context, rpc_client, production_threshold ),
    _pow_contract_id( pow_contract_id ),
    _update_timer( _main_context ),
-   _error_timer( _production_context )
+   _error_timer( _production_context ),
+   _num_worker_groups( worker_groups )
 {
    constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
-   for ( std::size_t worker_index = 0; worker_index < worker_groups; worker_index++ )
+   for ( std::size_t worker_index = 0; worker_index < _num_worker_groups; worker_index++ )
    {
-      uint512_t start = max_nonce * worker_index / worker_groups;
-      uint512_t end   = max_nonce * ( worker_index + 1 ) / worker_groups;
+      uint512_t start = max_nonce * worker_index / _num_worker_groups;
+      uint512_t end   = max_nonce * ( worker_index + 1 ) / _num_worker_groups;
 
       _worker_groups.emplace_back( start.convert_to< uint256_t >(), end.convert_to< uint256_t >() );
       _worker_hashrate[ worker_index ].store( 0 );
 
       LOG(info) << "Work group " << worker_index << ": [" << start.convert_to< uint256_t >() << ", " << end.convert_to< uint256_t >() << "]";
    }
-
-   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
-   _update_timer.expires_from_now( hashrate::update_interval + 2500ms );
-   _update_timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
 }
 
 pow_producer::~pow_producer() = default;
@@ -163,7 +161,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
          while ( !_cv.wait_for( lock, 1s, [&]()
          {
-            service_was_halted = _production_context.stopped();
+            service_was_halted = _production_context.stopped() || _halted;
             block_is_stale     = _last_known_height >= block.header.height;
 
             return *done || service_was_halted || block_is_stale;
@@ -187,7 +185,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
       auto block_nonce = nonce->value();
 
-      LOG(info) << "Found nonce: " << block_nonce;
+      LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
       LOG(info) << "Proof: " << crypto::hash_n( CRYPTO_SHA2_256_ID, block_nonce, block.id.digest );
 
       pow_signature_data pow_data;
@@ -232,7 +230,7 @@ void pow_producer::find_nonce(
 
    for ( uint256_t current_nonce = start; current_nonce < end; current_nonce++ )
    {
-      if ( *done || _production_context.stopped() )
+      if ( *done || _production_context.stopped() || _halted )
          break;
 
       auto blob = pack::to_variable_blob( current_nonce );
@@ -366,5 +364,18 @@ std::string pow_producer::compute_network_hashrate( const difficulty_metadata& m
       }
    }, meta );
 }
+
+void pow_producer::commence()
+{
+   boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
+   _update_timer.expires_from_now( hashrate::update_interval + 2500ms );
+   _update_timer.async_wait( std::bind( &pow_producer::display_hashrate, this, std::placeholders::_1 ) );
+}
+
+void pow_producer::halt()
+{
+   _update_timer.cancel();
+}
+
 
 } // koinos::block_production

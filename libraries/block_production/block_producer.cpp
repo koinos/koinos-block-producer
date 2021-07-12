@@ -1,5 +1,7 @@
 #include <koinos/block_production/block_producer.hpp>
 
+#include <boost/asio/post.hpp>
+
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/mq/util.hpp>
@@ -12,15 +14,38 @@ block_producer::block_producer(
    crypto::private_key signing_key,
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
-   std::shared_ptr< mq::client > rpc_client ) :
+   std::shared_ptr< mq::client > rpc_client,
+   int64_t production_threshold ) :
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
-   _rpc_client( rpc_client )
+   _rpc_client( rpc_client ),
+   _production_threshold( production_threshold )
 {
+   boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
 }
 
 block_producer::~block_producer() = default;
+
+void block_producer::on_run( const boost::system::error_code& ec )
+{
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
+   if ( !_halted )
+      return;
+
+   if ( _production_threshold < 0 )
+   {
+      LOG(info) << "Starting block production with stale production permitted";
+      _halted = false;
+      commence();
+   }
+   else
+   {
+      LOG(info) << "Awaiting block production threshold of " << _production_threshold << "s from head block time";
+   }
+}
 
 protocol::block block_producer::next_block()
 {
@@ -211,6 +236,35 @@ void block_producer::on_block_accept( const protocol::block& b )
 {
    if ( b.header.timestamp.t > _last_block_time )
       _last_block_time = b.header.timestamp.t;
+
+   if ( _production_threshold >= 0 )
+   {
+      auto now = int128_t( std::chrono::duration_cast< std::chrono::milliseconds >(
+         std::chrono::system_clock::now().time_since_epoch()
+      ).count() );
+
+      auto threshold_ms = _production_threshold * 1000;
+      auto time_delta   = now - _last_block_time.load();
+
+      if ( time_delta <= threshold_ms )
+      {
+         if ( _halted )
+         {
+            LOG(info) << "Within " << _production_threshold << "s of head block time, starting block production";
+            _halted = false;
+            commence();
+         }
+      }
+      else
+      {
+         if ( !_halted )
+         {
+            LOG(info) << "Fell outside " << _production_threshold << "s of head block time, stopping production";
+            _halted = true;
+            halt();
+         }
+      }
+   }
 }
 
 } // koinos::block_production

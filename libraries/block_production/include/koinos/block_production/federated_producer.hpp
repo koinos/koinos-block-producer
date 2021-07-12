@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <boost/asio/steady_timer.hpp>
 
 #include <koinos/block_production/block_producer.hpp>
@@ -13,11 +15,16 @@ public:
       crypto::private_key signing_key,
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
-      std::shared_ptr< mq::client > rpc_client
+      std::shared_ptr< mq::client > rpc_client,
+      int64_t production_threshold
    );
    ~federated_producer();
 
 protected:
+   void commence() override;
+   void halt() override;
+
+private:
    void produce( const boost::system::error_code& ec );
 
    boost::asio::steady_timer _timer;

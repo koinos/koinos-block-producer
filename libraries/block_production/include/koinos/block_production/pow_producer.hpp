@@ -35,6 +35,7 @@ public:
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client,
+      int64_t production_threshold,
       contract_id_type pow_contract_id,
       std::size_t worker_groups
    );
@@ -43,8 +44,8 @@ public:
    virtual void on_block_accept( const protocol::block& b ) override;
 
 protected:
-   void produce( const boost::system::error_code& ec );
-   void display_hashrate( const boost::system::error_code& ec );
+   void commence() override;
+   void halt() override;
 
 private:
    std::map< std::size_t, hash_count_type >      _worker_hashrate;
@@ -57,7 +58,10 @@ private:
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
    std::atomic< bool >                           _hashing;
    const contract_id_type                        _pow_contract_id;
+   const std::size_t                             _num_worker_groups;
 
+   void produce( const boost::system::error_code& ec );
+   void display_hashrate( const boost::system::error_code& ec );
    void find_nonce(
       std::size_t worker_index,
       const protocol::block& block,
