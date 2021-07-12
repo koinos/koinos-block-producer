@@ -67,7 +67,7 @@ private:
       std::shared_ptr< std::optional< uint256_t > > nonce,
       std::shared_ptr< std::atomic< bool > > done
    );
-   bool difficulty_met( const multihash& hash, uint256_t difficulty );
+   bool target_met( const multihash& hash, uint256_t target );
    difficulty_metadata get_difficulty_meta();
    std::string hashrate_to_string( double hashrate );
    std::string compute_network_hashrate( const difficulty_metadata& meta );

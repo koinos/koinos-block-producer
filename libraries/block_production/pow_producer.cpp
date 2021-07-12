@@ -12,14 +12,14 @@
 
 struct difficulty_metadata_v1
 {
-   koinos::uint256        difficulty_target = 0;
-   koinos::timestamp_type last_block_time    = koinos::timestamp_type( 0 );
-   koinos::timestamp_type block_window_time  = koinos::timestamp_type( 0 );
-   koinos::uint32         averaging_window   = 0;
+   koinos::uint256_t      target = 0;
+   koinos::timestamp_type last_block_time;
+   koinos::timestamp_type block_window_time;
+   uint32_t               averaging_window = 0;
 };
 
 KOINOS_REFLECT( difficulty_metadata_v1,
-   (difficulty_target)
+   (target)
    (last_block_time)
    (block_window_time)
    (averaging_window)
@@ -27,20 +27,16 @@ KOINOS_REFLECT( difficulty_metadata_v1,
 
 struct difficulty_metadata_v2
 {
-   koinos::uint256_t      difficulty_target = 0;
-   koinos::timestamp_type last_block_time = koinos::timestamp_type( 0 );
-   koinos::uint64         required_hc = 0;
-   koinos::uint128_t      hc_reserve;
-   koinos::uint128_t      us_reserve;
-   koinos::timestamp_type target_block_interval = koinos::timestamp_type( 1 );
+   koinos::uint256_t      target = 0;
+   koinos::timestamp_type last_block_time;
+   koinos::uint256_t      difficulty = 0;
+   koinos::timestamp_type target_block_interval;
 };
 
 KOINOS_REFLECT( difficulty_metadata_v2,
-   (difficulty_target)
+   (target)
    (last_block_time)
-   (required_hc)
-   (hc_reserve)
-   (us_reserve)
+   (difficulty)
    (target_block_interval)
 )
 
@@ -132,10 +128,10 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      uint256_t difficulty = std::visit( [](auto&& m){ return m.difficulty_target; }, diff_meta );
+      uint256_t target = std::visit( [](auto&& m){ return m.target; }, diff_meta );
       block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
 
-      LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << difficulty;
+      LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
 
       for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
@@ -148,7 +144,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
                this,
                worker_index++,
                block,
-               difficulty,
+               target,
                start,
                end,
                nonce,
@@ -225,7 +221,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
 void pow_producer::find_nonce(
    std::size_t worker_index,
    const protocol::block& block,
-   uint256_t difficulty,
+   uint256_t target,
    uint256_t start,
    uint256_t end,
    std::shared_ptr< std::optional< uint256_t > > nonce,
@@ -243,7 +239,7 @@ void pow_producer::find_nonce(
       blob.insert( blob.end(), block.id.digest.begin(), block.id.digest.end() );
       auto hash = crypto::hash_str( CRYPTO_SHA2_256_ID, blob.data(), blob.size() );
 
-      if ( difficulty_met( hash, difficulty ) )
+      if ( target_met( hash, target ) )
       {
          std::unique_lock< std::mutex > lock( _cv_mutex );
          if ( !*done )
@@ -308,9 +304,9 @@ difficulty_metadata pow_producer::get_difficulty_meta()
    return meta;
 }
 
-bool pow_producer::difficulty_met( const multihash& hash, uint256_t difficulty )
+bool pow_producer::target_met( const multihash& hash, uint256_t target )
 {
-   if ( pack::from_variable_blob< uint256_t >( hash.digest ) <= difficulty )
+   if ( pack::from_variable_blob< uint256_t >( hash.digest ) <= target )
       return true;
 
    return false;
@@ -361,11 +357,11 @@ std::string pow_producer::compute_network_hashrate( const difficulty_metadata& m
       [&]( const difficulty_metadata_v1& m ) {
          // The resolution of timestamps.
          constexpr double timestamp_s = 0.001;
-         auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / m.difficulty_target ) * m.averaging_window ) / uint64_t( m.block_window_time );
+         auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / m.target ) * m.averaging_window ) / uint64_t( m.block_window_time );
          return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
       },
       [&]( const difficulty_metadata_v2& m ) {
-         auto hashrate = m.required_hc / uint64_t( m.target_block_interval );
+         auto hashrate = m.difficulty / uint64_t( m.target_block_interval );
          return hashrate_to_string( double( hashrate ) );
       }
    }, meta );
