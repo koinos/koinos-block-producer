@@ -4,9 +4,6 @@
 [submodule "libraries/koinos-util-cpp"]
 	path = libraries/util
 	url = https://github.com/koinos/koinos-util-cpp.git
-[submodule "libraries/koinos-types"]
-	path = libraries/types
-	url = https://github.com/koinos/koinos-types.git
 [submodule "libraries/koinos-exception-cpp"]
 	path = libraries/exception
 	url = https://github.com/koinos/koinos-exception-cpp.git
@@ -16,3 +13,6 @@
 [submodule "libraries/koinos-mq-cpp"]
 	path = libraries/mq
 	url = https://github.com/koinos/koinos-mq-cpp.git
+[submodule "libraries/proto"]
+	path = libraries/proto
+	url = https://github.com/koinos/koinos-proto-cpp.git
