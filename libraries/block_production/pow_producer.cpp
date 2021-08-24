@@ -5,50 +5,15 @@
 
 #include <boost/asio/post.hpp>
 
+#include <koinos/big_int.hpp>
 #include <koinos/block_production/pow_producer.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
-#include <koinos/pack/classes.hpp>
+#include <koinos/contracts/pow/pow.pb.h>
+#include <koinos/protocol/protocol.pb.h>
+#include <koinos/rpc/chain/chain_rpc.pb.h>
 
-struct difficulty_metadata_v1
-{
-   koinos::uint256_t      target = 0;
-   koinos::timestamp_type last_block_time;
-   koinos::timestamp_type block_window_time;
-   uint32_t               averaging_window = 0;
-};
-
-KOINOS_REFLECT( difficulty_metadata_v1,
-   (target)
-   (last_block_time)
-   (block_window_time)
-   (averaging_window)
-)
-
-struct difficulty_metadata_v2
-{
-   koinos::uint256_t      target = 0;
-   koinos::timestamp_type last_block_time;
-   koinos::uint256_t      difficulty = 0;
-   koinos::timestamp_type target_block_interval;
-};
-
-KOINOS_REFLECT( difficulty_metadata_v2,
-   (target)
-   (last_block_time)
-   (difficulty)
-   (target_block_interval)
-)
-
-struct pow_signature_data
-{
-   koinos::uint256          nonce;
-   koinos::fixed_blob< 65 > recoverable_signature;
-};
-
-KOINOS_REFLECT( pow_signature_data, (nonce)(recoverable_signature) )
-
-const uint32_t get_difficulty_entry_point = 1249216561;
+const uint32_t get_difficulty_entrypoint = 1249216561;
 
 using namespace std::chrono_literals;
 
@@ -126,8 +91,11 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      uint256_t target = std::visit( [](auto&& m){ return m.target; }, diff_meta );
-      block.id = crypto::hash_n( CRYPTO_SHA2_256_ID, block.header, block.active_data );
+      uint256_t target;
+      std::stringstream ss( diff_meta.target() );
+      from_binary( ss, target );
+
+      block.set_id( crypto::hash_n( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
@@ -162,7 +130,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
          while ( !_cv.wait_for( lock, 1s, [&]()
          {
             service_was_halted = _production_context.stopped() || _halted;
-            block_is_stale     = _last_known_height >= block.header.height;
+            block_is_stale     = _last_known_height >= block.header().height();
 
             return *done || service_was_halted || block_is_stale;
          } ) );
@@ -184,15 +152,20 @@ void pow_producer::produce( const boost::system::error_code& ec )
       KOINOS_ASSERT( nonce->has_value(), koinos::exception, "Expected nonce to contain a value" );
 
       auto block_nonce = nonce->value();
+      ss = std::stringstream();
+      to_binary( ss, block_nonce );
 
       LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
-      LOG(info) << "Proof: " << crypto::hash_n( CRYPTO_SHA2_256_ID, block_nonce, block.id.digest );
+      LOG(info) << "Proof: " << crypto::hash_n( crypto::multicodec::sha2_256, ss.str(), block.id() );
 
-      pow_signature_data pow_data;
-      pow_data.nonce = block_nonce;
-      pow_data.recoverable_signature = _signing_key.sign_compact( block.id );
+      contracts::pow::pow_signature_data pow_data;
+      pow_data.set_nonce( ss.str() );
+      auto signature = std::string( (const char*)_signing_key.sign_compact( crypto::multihash::from( block.id() ) ).data(), sizeof( _signing_key ) );
+      pow_data.set_recoverable_signature( signature );
 
-      pack::to_variable_blob( block.signature_data, pow_data );
+      ss = std::stringstream();
+      pow_data.SerializeToOstream( &ss );
+      block.set_signature_data( ss.str() );
 
       submit_block( block );
       _error_wait_time = 5s;
@@ -233,9 +206,9 @@ void pow_producer::find_nonce(
       if ( *done || _production_context.stopped() || _halted )
          break;
 
-      auto blob = pack::to_variable_blob( current_nonce );
-      blob.insert( blob.end(), block.id.digest.begin(), block.id.digest.end() );
-      auto hash = crypto::hash_str( CRYPTO_SHA2_256_ID, blob.data(), blob.size() );
+      std::stringstream ss;
+      to_binary( ss, current_nonce );
+      auto hash = hash_n( crypto::multicodec::sha2_256, ss.str(), block.id() );
 
       if ( target_met( hash, target ) )
       {
@@ -258,53 +231,41 @@ void pow_producer::find_nonce(
    }
 }
 
-difficulty_metadata pow_producer::get_difficulty_meta()
+contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 {
-   rpc::chain::read_contract_request req;
-   req.contract_id = _pow_contract_id;
-   req.entry_point = get_difficulty_entry_point;
+   rpc::chain::chain_rpc_request req;
+   auto read_contract = req.mutable_read_contract();
+   read_contract->set_contract_id( _pow_contract_id );
+   read_contract->set_entrypoint( get_difficulty_entrypoint );
 
-   pack::json j;
-   pack::to_json( j, rpc::chain::chain_rpc_request{ req } );
-   auto future = _rpc_client->rpc( service::chain, j.dump() );
+   std::string s;
+   req.SerializeToString( &s );
+   auto future = _rpc_client->rpc( service::chain, s );
 
    rpc::chain::chain_rpc_response resp;
-   pack::from_json( pack::json::parse( future.get() ), resp );
+   resp.ParseFromString( future.get() );
 
-   rpc::chain::read_contract_response contract_response;
-   std::visit(
-      koinos::overloaded {
-         [&]( const rpc::chain::read_contract_response& cr )
-         {
-            contract_response = cr;
-         },
-         [&]( const rpc::chain::chain_error_response& ce )
-         {
-            KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", ce.error_text) );
-         },
-         [&]( const auto& p )
-         {
-            KOINOS_THROW( koinos::exception, "Unexpected RPC response while retrieving difficulty from the pow contract" );
-         }
-   }, resp );
-
-   difficulty_metadata meta;
-
-   try
+   if ( resp.has_chain_error() )
    {
-      meta = pack::from_variable_blob< difficulty_metadata_v2 >( contract_response.result );
-   }
-   catch ( ... )
-   {
-      meta = pack::from_variable_blob< difficulty_metadata_v1 >( contract_response.result );
+      KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", resp.chain_error().message()) );
    }
 
+   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "Unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
+
+   contracts::pow::difficulty_metadata meta;
+   meta.ParseFromString( resp.read_contract().result() );
    return meta;
 }
 
-bool pow_producer::target_met( const multihash& hash, uint256_t target )
+bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
 {
-   if ( pack::from_variable_blob< uint256_t >( hash.digest ) <= target )
+   std::string s;
+   s.resize( hash.digest().size() );
+   std::transform( hash.digest().begin(), hash.digest().end(), s.begin(), []( std::byte b ) { return (char)b; } );
+   std::stringstream ss( s );
+   uint256_t proof;
+   from_binary( ss, proof );
+   if ( proof <= target )
       return true;
 
    return false;
@@ -316,7 +277,7 @@ void pow_producer::on_block_accept( const protocol::block& b )
 
    {
       std::unique_lock< std::mutex > lock( _cv_mutex );
-      _last_known_height = b.header.height;
+      _last_known_height = b.header().height();
       _cv.notify_one();
    }
 }
@@ -349,20 +310,13 @@ std::string pow_producer::hashrate_to_string( double hashrate )
    return std::to_string( hashrate ) + " " + suffix;
 }
 
-std::string pow_producer::compute_network_hashrate( const difficulty_metadata& meta )
+std::string pow_producer::compute_network_hashrate( const contracts::pow::difficulty_metadata& meta )
 {
-   return std::visit( koinos::overloaded {
-      [&]( const difficulty_metadata_v1& m ) {
-         // The resolution of timestamps.
-         constexpr double timestamp_s = 0.001;
-         auto hashrate = ( ( std::numeric_limits< uint256_t >::max() / m.target ) * m.averaging_window ) / uint64_t( m.block_window_time );
-         return hashrate_to_string( hashrate.convert_to< double >() / timestamp_s );
-      },
-      [&]( const difficulty_metadata_v2& m ) {
-         auto hashrate = m.difficulty / uint64_t( m.target_block_interval );
-         return hashrate_to_string( double( hashrate ) );
-      }
-   }, meta );
+   uint256_t difficulty;
+   std::stringstream ss( meta.difficulty() );
+   from_binary( ss, difficulty );
+   auto hashrate = difficulty / meta.target_block_interval();
+   return hashrate_to_string( double( hashrate ) );
 }
 
 void pow_producer::commence()

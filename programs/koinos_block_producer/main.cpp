@@ -15,8 +15,9 @@
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
 #include <koinos/mq/request_handler.hpp>
-#include <koinos/pack/classes.hpp>
-#include <koinos/pack/rt/json.hpp>
+#include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util.hpp>
 
 #define FEDERATED_ALGORITHM                "federated"
@@ -120,7 +121,7 @@ int main( int argc, char** argv )
       auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
       auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
-      auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto pow_id      = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
 
       auto production_threshold = get_option< int64_t >(
          STALE_PRODUCTION_THRESHOLD_OPTION,
@@ -175,17 +176,19 @@ int main( int argc, char** argv )
 
       {
          LOG(info) << "Attempting to connect to chain...";
-         pack::json j;
-         pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::chain_reserved_request{} } );
-         client->rpc( service::chain, j.dump() ).get();
+         rpc::chain::chain_rpc_request req;
+         std::string s;
+         req.SerializeToString( &s );
+         client->rpc( service::chain, s ).get();
          LOG(info) << "Established connection to chain";
       }
 
       {
          LOG(info) << "Attempting to connect to mempool...";
-         pack::json j;
-         pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::mempool_reserved_request{} } );
-         client->rpc( service::mempool, j.dump() ).get();
+         rpc::mempool::mempool_rpc_request req;
+         std::string s;
+         req.SerializeToString( &s );
+         client->rpc( service::mempool, s ).get();
          LOG(info) << "Established connection to mempool";
       }
 
@@ -206,17 +209,6 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
-         contract_id_type pow_id;
-
-         try
-         {
-            pack::json j( pow_id_str );
-            pack::from_json( j, pow_id );
-         }
-         catch ( const std::exception& ex )
-         {
-            KOINOS_THROW( koinos::exception, "Could not parse PoW contract ID: ${e}", ("e", ex.what()) );
-         }
 
          producer = std::make_unique< block_production::pow_producer >(
             signing_key,
@@ -245,8 +237,8 @@ int main( int argc, char** argv )
             try
             {
                broadcast::block_accepted bam;
-               pack::from_json( pack::json::parse( msg ), bam );
-               producer->on_block_accept( bam.block );
+               bam.ParseFromString( msg );
+               producer->on_block_accept( bam.block() );
             }
             catch( const boost::exception& e )
             {

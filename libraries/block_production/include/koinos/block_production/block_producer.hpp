@@ -5,10 +5,48 @@
 
 #include <boost/asio/io_context.hpp>
 
-#include <koinos/mq/client.hpp>
 #include <koinos/crypto/elliptic.hpp>
-#include <koinos/pack/classes.hpp>
+#include <koinos/crypto/multihash.hpp>
 #include <koinos/exception.hpp>
+#include <koinos/mq/client.hpp>
+#include <koinos/protocol/protocol.pb.h>
+
+struct empty_hash_t {};
+using passive_hash_target = std::variant< const google::protobuf::Message*, const std::string*, empty_hash_t >;
+
+namespace koinos::crypto {
+   inline multihash hash( multicodec code, const passive_hash_target& t )
+   {
+      multihash mh;
+
+      std::visit(
+         koinos::overloaded{
+            [&]( const google::protobuf::Message* m )
+            {
+               std::string s;
+               m->SerializeToString( &s );
+
+               mh = hash( code, s );
+            },
+            [&]( const std::string* s )
+            {
+               mh = hash( code, *s );
+            },
+            [&]( const empty_hash_t& )
+            {
+               mh = multihash::empty( code );
+            },
+            [&]( auto )
+            {
+               mh = multihash::zero( code );
+            }
+         },
+         t
+      );
+
+      return mh;
+   }
+}
 
 namespace koinos::block_production {
 
@@ -44,8 +82,8 @@ protected:
 
 private:
    void on_run( const boost::system::error_code& ec );
-   void set_merkle_roots( protocol::block& block, uint64_t code, uint64_t size = 0 );
-   timestamp_type now();
+   void set_merkle_roots( protocol::block& block, crypto::multicodec code, uint64_t size = 0 );
+   uint64_t now();
 };
 
 } // koinos::block_production
