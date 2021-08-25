@@ -2,7 +2,6 @@
 
 #include <boost/asio/post.hpp>
 
-#include <koinos/big_int.hpp>
 #include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
@@ -227,9 +226,9 @@ void block_producer::on_block_accept( const protocol::block& b )
 
    if ( _production_threshold >= 0 )
    {
-      auto now = int128_t( std::chrono::duration_cast< std::chrono::milliseconds >(
+      auto now = std::chrono::duration_cast< std::chrono::milliseconds >(
          std::chrono::system_clock::now().time_since_epoch()
-      ).count() );
+      ).count();
 
       auto threshold_ms = _production_threshold * 1000;
       auto time_delta   = now - _last_block_time.load();

@@ -5,7 +5,7 @@
 
 #include <boost/asio/post.hpp>
 
-#include <koinos/big_int.hpp>
+#include <koinos/bigint.hpp>
 #include <koinos/block_production/pow_producer.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
