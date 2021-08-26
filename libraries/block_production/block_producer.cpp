@@ -2,6 +2,7 @@
 
 #include <boost/asio/post.hpp>
 
+#include <koinos/conversion.hpp>
 #include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
@@ -55,9 +56,7 @@ protocol::block block_producer::next_block()
    rpc::chain::chain_rpc_request req;
    req.mutable_get_head_info();
 
-   std::string s;
-   req.SerializeToString( &s );
-   auto future = _rpc_client->rpc( service::chain, s );
+   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
    rpc::chain::chain_rpc_response resp;
    resp.ParseFromString( future.get() );
@@ -82,9 +81,7 @@ void block_producer::fill_block( protocol::block& b )
    rpc::mempool::mempool_rpc_request req;
    req.mutable_get_pending_transactions()->set_limit( 100 );
 
-   std::string s;
-   req.SerializeToString( &s );
-   auto future = _rpc_client->rpc( service::mempool, s );
+   auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( req ) );
 
    rpc::mempool::mempool_rpc_response resp;
    resp.ParseFromString( future.get() );
@@ -148,9 +145,7 @@ void block_producer::submit_block( protocol::block& b )
    block_req->set_verify_block_signature( true );
    block_req->set_verify_transaction_signature( true );
 
-   std::string s;
-   req.SerializeToString( &s );
-   auto future = _rpc_client->rpc( service::chain, s );
+   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
    rpc::chain::chain_rpc_response resp;
    resp.ParseFromString( future.get() );

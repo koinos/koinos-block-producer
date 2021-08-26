@@ -7,6 +7,7 @@
 
 #include <koinos/bigint.hpp>
 #include <koinos/block_production/pow_producer.hpp>
+#include <koinos/conversion.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/contracts/pow/pow.pb.h>
@@ -91,9 +92,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      uint256_t target;
-      std::stringstream ss( diff_meta.target() );
-      from_binary( ss, target );
+      auto target = converter::from< uint256_t >( diff_meta.target() );
 
       block.set_id( crypto::hash_n( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
 
@@ -152,20 +151,16 @@ void pow_producer::produce( const boost::system::error_code& ec )
       KOINOS_ASSERT( nonce->has_value(), koinos::exception, "Expected nonce to contain a value" );
 
       auto block_nonce = nonce->value();
-      ss = std::stringstream();
-      to_binary( ss, block_nonce );
 
       LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
-      LOG(info) << "Proof: " << crypto::hash_n( crypto::multicodec::sha2_256, ss.str(), block.id() );
+      LOG(info) << "Proof: " << crypto::hash_n( crypto::multicodec::sha2_256, block_nonce, block.id() );
 
       contracts::pow::pow_signature_data pow_data;
-      pow_data.set_nonce( ss.str() );
+      pow_data.set_nonce( converter::as< std::string >( block_nonce ) );
       auto signature = std::string( (const char*)_signing_key.sign_compact( crypto::multihash::from( block.id() ) ).data(), sizeof( _signing_key ) );
       pow_data.set_recoverable_signature( signature );
 
-      ss = std::stringstream();
-      pow_data.SerializeToOstream( &ss );
-      block.set_signature_data( ss.str() );
+      block.set_signature_data( converter::as< std::string >( pow_data ) );
 
       submit_block( block );
       _error_wait_time = 5s;
@@ -206,9 +201,7 @@ void pow_producer::find_nonce(
       if ( *done || _production_context.stopped() || _halted )
          break;
 
-      std::stringstream ss;
-      to_binary( ss, current_nonce );
-      auto hash = hash_n( crypto::multicodec::sha2_256, ss.str(), block.id() );
+      auto hash = hash_n( crypto::multicodec::sha2_256, current_nonce, block.id() );
 
       if ( target_met( hash, target ) )
       {
@@ -259,13 +252,7 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
 bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
 {
-   std::string s;
-   s.resize( hash.digest().size() );
-   std::transform( hash.digest().begin(), hash.digest().end(), s.begin(), []( std::byte b ) { return (char)b; } );
-   std::stringstream ss( s );
-   uint256_t proof;
-   from_binary( ss, proof );
-   if ( proof <= target )
+   if ( converter::from< uint256_t >( hash.as< std::string >() ) <= target )
       return true;
 
    return false;
@@ -312,10 +299,7 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 
 std::string pow_producer::compute_network_hashrate( const contracts::pow::difficulty_metadata& meta )
 {
-   uint256_t difficulty;
-   std::stringstream ss( meta.difficulty() );
-   from_binary( ss, difficulty );
-   auto hashrate = difficulty / meta.target_block_interval();
+   auto hashrate = converter::from< uint256_t >( meta.difficulty() ) / meta.target_block_interval();
    return hashrate_to_string( double( hashrate ) );
 }
 
