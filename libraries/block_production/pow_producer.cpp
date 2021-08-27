@@ -94,7 +94,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto diff_meta = get_difficulty_meta();
       auto target = converter::from< uint256_t >( diff_meta.target() );
 
-      block.set_id( crypto::hash_n( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
+      block.set_id( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
@@ -153,7 +153,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block_nonce = nonce->value();
 
       LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
-      LOG(info) << "Proof: " << crypto::hash_n( crypto::multicodec::sha2_256, block_nonce, block.id() );
+      LOG(info) << "Proof: " << crypto::hash( crypto::multicodec::sha2_256, block_nonce, block.id() );
 
       contracts::pow::pow_signature_data pow_data;
       pow_data.set_nonce( converter::as< std::string >( block_nonce ) );
@@ -201,9 +201,9 @@ void pow_producer::find_nonce(
       if ( *done || _production_context.stopped() || _halted )
          break;
 
-      auto hash = hash_n( crypto::multicodec::sha2_256, current_nonce, block.id() );
+      auto proof = hash( crypto::multicodec::sha2_256, current_nonce, block.id() );
 
-      if ( target_met( hash, target ) )
+      if ( target_met( proof, target ) )
       {
          std::unique_lock< std::mutex > lock( _cv_mutex );
          if ( !*done )

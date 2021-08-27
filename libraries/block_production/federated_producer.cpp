@@ -34,7 +34,7 @@ void federated_producer::produce( const boost::system::error_code& ec )
    {
       auto block = next_block();
       fill_block( block );
-      auto id = crypto::hash_n( crypto::multicodec::sha2_256, block.header(), block.active() );
+      auto id = crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() );
       block.set_id( id.as< std::string >() );
       auto block_signature = std::string( (const char*)_signing_key.sign_compact( id ).data(), sizeof( crypto::recoverable_signature ) );
       block.set_signature_data( block_signature );
