@@ -53,17 +53,17 @@ protocol::block block_producer::next_block()
 {
    protocol::block b;
 
-   rpc::chain::chain_rpc_request req;
+   rpc::chain::chain_request req;
    req.mutable_get_head_info();
 
    auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
-   rpc::chain::chain_rpc_response resp;
+   rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
 
-   if ( resp.has_chain_error() )
+   if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.chain_error().message()) );
+      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.error().message()) );
    }
 
    KOINOS_ASSERT( resp.has_get_head_info(), koinos::exception, "Unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
@@ -78,17 +78,17 @@ protocol::block block_producer::next_block()
 
 void block_producer::fill_block( protocol::block& b )
 {
-   rpc::mempool::mempool_rpc_request req;
+   rpc::mempool::mempool_request req;
    req.mutable_get_pending_transactions()->set_limit( 100 );
 
    auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( req ) );
 
-   rpc::mempool::mempool_rpc_response resp;
+   rpc::mempool::mempool_response resp;
    resp.ParseFromString( future.get() );
 
-   if ( resp.has_mempool_error() )
+   if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.mempool_error().message()) );
+      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.error().message()) );
    }
 
    KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "Unexpected RPC response when retrieving head info", ("r", resp) );
@@ -115,30 +115,36 @@ void block_producer::fill_block( protocol::block& b )
 
       const auto& transaction = pending_transactions.transactions( transaction_index );
 
-      if ( !transaction.active().has_native() )
-         continue;
+      protocol::active_transaction_data active;
 
-      auto new_block_resources = block_resources + transaction.active().native().resource_limit();
-
-      if ( new_block_resources <= max_block_resources )
+      if ( active.ParseFromString( transaction.active() ) )
       {
-         *b.add_transactions() = transaction;
-         block_resources = new_block_resources;
+         if ( active.resource_limit() == 0 ) continue;
+
+         auto new_block_resources = block_resources + active.resource_limit();
+
+         if ( new_block_resources <= max_block_resources )
+         {
+            *b.add_transactions() = transaction;
+            block_resources = new_block_resources;
+         }
       }
    }
 
-   b.mutable_passive()->mutable_native();
-   b.mutable_active()->mutable_native();
+   protocol::active_block_data active;
+   auto signer_address = _signing_key.get_public_key().to_address();
+   active.set_signer( std::string( signer_address.begin(), signer_address.end() ) );
 
-   auto signer_address   = _signing_key.get_public_key().to_address();
-   b.mutable_active()->mutable_native()->set_signer( std::string( signer_address.begin(), signer_address.end() ) );
+   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
 
-   set_merkle_roots( b, crypto::multicodec::sha2_256 );
+   protocol::passive_block_data passive;
+   b.set_active( converter::as< std::string >( active ) );
+   b.set_passive( converter::as< std::string >( passive ) );
 }
 
 void block_producer::submit_block( protocol::block& b )
 {
-   rpc::chain::chain_rpc_request req;
+   rpc::chain::chain_request req;
    auto block_req = req.mutable_submit_block();
    block_req->set_allocated_block( &b );
    block_req->set_verify_passive_data( true );
@@ -147,12 +153,12 @@ void block_producer::submit_block( protocol::block& b )
 
    auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
-   rpc::chain::chain_rpc_response resp;
+   rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
 
-   if ( resp.has_chain_error() )
+   if ( resp.has_error() )
    {
-      LOG(warning) << "Error while submitting block: " << resp.chain_error().message();
+      LOG(warning) << "Error while submitting block: " << resp.error().message();
       return;
    }
 
@@ -180,27 +186,26 @@ void block_producer::submit_block( protocol::block& b )
 //                +----------------------+      +----------------------+
 //
 
-void block_producer::set_merkle_roots( protocol::block& block, crypto::multicodec code, uint64_t size )
+void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, uint64_t size )
 {
+   std::vector< crypto::multihash > transactions( block.transactions().size() );
+   std::vector< crypto::multihash > passives( 2 * ( block.transactions().size() + 1 ) );
 
-   std::vector< const protocol::transaction* > transactions( block.transactions().size() );
-   std::vector< passive_hash_target > passives( 2 * ( block.transactions().size() + 1 ) );
-
-   passives.emplace_back( &block.passive() );
-   passives.emplace_back( empty_hash_t() );
+   passives.emplace_back( crypto::hash( code, block.passive(), size ) );
+   passives.emplace_back( crypto::multihash::empty( code ) );
 
    for ( const auto& trx : block.transactions() )
    {
-      transactions.push_back( &trx );
-      passives.emplace_back( &trx.passive() );
-      passives.emplace_back( &trx.signature_data() );
+      passives.emplace_back( crypto::hash( code, trx.passive(), size ) );
+      passives.emplace_back( crypto::hash( code, trx.signature_data(), size ) );
+      transactions.emplace_back( crypto::hash( code, trx, size ) );
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
    auto passives_merkle_tree = crypto::merkle_tree( code, passives );
 
-   block.mutable_active()->mutable_native()->set_transaction_merkle_root( transaction_merkle_tree.root()->hash().as< std::string >() );
-   block.mutable_active()->mutable_native()->set_passive_data_merkle_root( passives_merkle_tree.root()->hash().as< std::string >() );
+   active_data.set_transaction_merkle_root( converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
+   active_data.set_passive_data_merkle_root( converter::as< std::string >( passives_merkle_tree.root()->hash() ) );
 }
 
 uint64_t block_producer::now()

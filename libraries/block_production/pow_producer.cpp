@@ -92,7 +92,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      auto target = converter::from< uint256_t >( diff_meta.target() );
+      auto target = converter::to< uint256_t >( diff_meta.target() );
 
       block.set_id( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
 
@@ -226,21 +226,21 @@ void pow_producer::find_nonce(
 
 contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 {
-   rpc::chain::chain_rpc_request req;
+   rpc::chain::chain_request req;
    auto read_contract = req.mutable_read_contract();
    read_contract->set_contract_id( _pow_contract_id );
-   read_contract->set_entrypoint( get_difficulty_entrypoint );
+   read_contract->set_entry_point( get_difficulty_entrypoint );
 
    std::string s;
    req.SerializeToString( &s );
    auto future = _rpc_client->rpc( service::chain, s );
 
-   rpc::chain::chain_rpc_response resp;
+   rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
 
-   if ( resp.has_chain_error() )
+   if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", resp.chain_error().message()) );
+      KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
    }
 
    KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "Unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
@@ -252,7 +252,7 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
 bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
 {
-   if ( converter::from< uint256_t >( hash.as< std::string >() ) <= target )
+   if ( converter::to< uint256_t >( hash.as< std::string >() ) <= target )
       return true;
 
    return false;
@@ -299,7 +299,7 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 
 std::string pow_producer::compute_network_hashrate( const contracts::pow::difficulty_metadata& meta )
 {
-   auto hashrate = converter::from< uint256_t >( meta.difficulty() ) / meta.target_block_interval();
+   auto hashrate = converter::to< uint256_t >( meta.difficulty() ) / meta.target_block_interval();
    return hashrate_to_string( double( hashrate ) );
 }
 

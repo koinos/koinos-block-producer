@@ -176,7 +176,7 @@ int main( int argc, char** argv )
 
       {
          LOG(info) << "Attempting to connect to chain...";
-         rpc::chain::chain_rpc_request req;
+         rpc::chain::chain_request req;
          req.mutable_reserved();
          std::string s;
          req.SerializeToString( &s );
@@ -186,7 +186,7 @@ int main( int argc, char** argv )
 
       {
          LOG(info) << "Attempting to connect to mempool...";
-         rpc::mempool::mempool_rpc_request req;
+         rpc::mempool::mempool_request req;
          req.mutable_reserved();
          std::string s;
          req.SerializeToString( &s );
