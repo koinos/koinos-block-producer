@@ -46,7 +46,7 @@ protected:
 
 private:
    void on_run( const boost::system::error_code& ec );
-   void set_merkle_roots( const protocol::block&, protocol::active_block_data&, crypto::multicodec code, uint64_t size = 0 );
+   void set_merkle_roots( const protocol::block&, protocol::active_block_data&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
    uint64_t now();
 };
 

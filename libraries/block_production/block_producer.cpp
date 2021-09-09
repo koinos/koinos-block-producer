@@ -91,17 +91,12 @@ void block_producer::fill_block( protocol::block& b )
       KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "Unexpected RPC response when retrieving head info", ("r", resp) );
+   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "Unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
    const auto& pending_transactions = resp.get_pending_transactions();
 
    const uint64_t max_block_resources    = 100'000'000;
    const int max_transactions_to_process = 100;
    uint64_t block_resources              = 0;
-
-   //for( const auto& trx : pending_transactions.transactions() )
-   //{
-   //
-   //}
 
    for ( int transaction_index = 0; transaction_index < pending_transactions.transactions_size(); transaction_index++ )
    {
@@ -146,7 +141,7 @@ void block_producer::submit_block( protocol::block& b )
 {
    rpc::chain::chain_request req;
    auto block_req = req.mutable_submit_block();
-   block_req->set_allocated_block( &b );
+   block_req->mutable_block()->CopyFrom( b );
    block_req->set_verify_passive_data( true );
    block_req->set_verify_block_signature( true );
    block_req->set_verify_transaction_signature( true );
@@ -186,10 +181,11 @@ void block_producer::submit_block( protocol::block& b )
 //                +----------------------+      +----------------------+
 //
 
-void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, uint64_t size )
+void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, crypto::digest_size size )
 {
    std::vector< crypto::multihash > transactions( block.transactions().size() );
-   std::vector< crypto::multihash > passives( 2 * ( block.transactions().size() + 1 ) );
+   std::vector< crypto::multihash > passives;
+   passives.reserve( 2 * ( block.transactions().size() + 1 ) );
 
    passives.emplace_back( crypto::hash( code, block.passive(), size ) );
    passives.emplace_back( crypto::multihash::empty( code ) );
