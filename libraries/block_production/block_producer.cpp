@@ -159,7 +159,7 @@ void block_producer::submit_block( protocol::block& b )
 
    KOINOS_ASSERT( resp.has_submit_block(), koinos::exception, "Unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
-   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << b.id();
+   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << converter::to< crypto::multihash >( b.id() );
 }
 
 //
