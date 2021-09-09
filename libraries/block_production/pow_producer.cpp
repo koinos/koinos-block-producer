@@ -94,7 +94,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto diff_meta = get_difficulty_meta();
       auto target = converter::to< uint256_t >( diff_meta.target() );
 
-      block.set_id( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ).as< std::string >() );
+      block.set_id( converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ) ) );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
@@ -148,7 +148,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
          }
       }
 
-      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "Expected nonce to contain a value" );
+      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "expected nonce to contain a value" );
 
       auto block_nonce = nonce->value();
 
@@ -157,7 +157,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
       contracts::pow::pow_signature_data pow_data;
       pow_data.set_nonce( converter::as< std::string >( block_nonce ) );
-      auto signature = std::string( (const char*)_signing_key.sign_compact( crypto::multihash::from( block.id() ) ).data(), sizeof( _signing_key ) );
+      auto signature = std::string( (const char*)_signing_key.sign_compact( converter::to< crypto::multihash >( block.id() ) ).data(), sizeof( _signing_key ) );
       pow_data.set_recoverable_signature( signature );
 
       block.set_signature_data( converter::as< std::string >( pow_data ) );
@@ -240,10 +240,10 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( koinos::exception, "error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "Unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
 
    contracts::pow::difficulty_metadata meta;
    meta.ParseFromString( resp.read_contract().result() );
@@ -252,7 +252,7 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
 bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
 {
-   if ( converter::to< uint256_t >( hash.as< std::string >() ) <= target )
+   if ( converter::to< uint256_t >( hash.digest() ) <= target )
       return true;
 
    return false;
