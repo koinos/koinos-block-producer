@@ -161,7 +161,7 @@ int main( int argc, char** argv )
       std::string private_key_wif( ( std::istreambuf_iterator< char >( ifs ) ), ( std::istreambuf_iterator< char >() ) );
       crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
 
-      LOG(info) << "Public address: " << signing_key.get_public_key().to_address();
+      LOG(info) << "Public address: " << to_hex( signing_key.get_public_key().to_address_bytes() );
 
       auto client = std::make_shared< mq::client >();
 

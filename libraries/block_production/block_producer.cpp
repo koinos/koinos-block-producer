@@ -127,8 +127,7 @@ void block_producer::fill_block( protocol::block& b )
    }
 
    protocol::active_block_data active;
-   auto signer_address = _signing_key.get_public_key().to_address();
-   active.set_signer( std::string( signer_address.begin(), signer_address.end() ) );
+   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
 
    set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
 
