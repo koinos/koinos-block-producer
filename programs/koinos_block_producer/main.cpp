@@ -136,11 +136,11 @@ int main( int argc, char** argv )
       KOINOS_ASSERT(
          production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
          koinos::exception,
-         "Stale block production threshold would overflow, maximum value: ${v}",
+         "stale block production threshold would overflow, maximum value: ${v}",
          ("v", std::numeric_limits< int64_t >::max() / 1000)
       );
 
-      KOINOS_ASSERT( jobs > 0, koinos::exception, "Jobs must be greater than 0" );
+      KOINOS_ASSERT( jobs > 0, koinos::exception, "jobs must be greater than 0" );
 
       if ( config.IsNull() )
       {
@@ -154,7 +154,7 @@ int main( int argc, char** argv )
       KOINOS_ASSERT(
          std::filesystem::exists( private_key_file ),
          koinos::exception,
-         "Unable to find private key file at: ${loc}", ("loc", private_key_file.string())
+         "unable to find private key file at: ${loc}", ("loc", private_key_file.string())
       );
 
       std::ifstream ifs( private_key_file );

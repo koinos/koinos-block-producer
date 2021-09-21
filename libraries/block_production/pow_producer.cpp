@@ -148,7 +148,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
          }
       }
 
-      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "Expected nonce to contain a value" );
+      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "expected nonce to contain a value" );
 
       auto block_nonce = nonce->value();
 
@@ -239,10 +239,10 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( koinos::exception, "error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "Unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
 
    contracts::pow::difficulty_metadata meta;
    meta.ParseFromString( resp.read_contract().result() );

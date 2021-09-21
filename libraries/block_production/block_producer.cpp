@@ -63,10 +63,10 @@ protocol::block block_producer::next_block()
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_get_head_info(), koinos::exception, "Unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_get_head_info(), koinos::exception, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
    const auto& head_info = resp.get_head_info();
 
    b.mutable_header()->set_previous( resp.get_head_info().head_topology().id() );
@@ -88,10 +88,10 @@ void block_producer::fill_block( protocol::block& b )
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "Unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
+   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
    const auto& pending_transactions = resp.get_pending_transactions();
 
    const uint64_t max_block_resources    = 100'000'000;
@@ -156,9 +156,9 @@ void block_producer::submit_block( protocol::block& b )
       return;
    }
 
-   KOINOS_ASSERT( resp.has_submit_block(), koinos::exception, "Unexpected RPC response while submitting block: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_submit_block(), koinos::exception, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
-   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << b.id();
+   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << converter::to< crypto::multihash >( b.id() );
 }
 
 //
