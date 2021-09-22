@@ -157,8 +157,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
       contracts::pow::pow_signature_data pow_data;
       pow_data.set_nonce( converter::as< std::string >( block_nonce ) );
-      auto signature = std::string( (const char*)_signing_key.sign_compact( converter::to< crypto::multihash >( block.id() ) ).data(), sizeof( _signing_key ) );
-      pow_data.set_recoverable_signature( signature );
+      pow_data.set_recoverable_signature( converter::as< std::string >( _signing_key.sign_compact( converter::to< crypto::multihash >( block.id() ) ) ) );
 
       block.set_signature_data( converter::as< std::string >( pow_data ) );
 

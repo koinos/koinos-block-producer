@@ -1,7 +1,6 @@
 #include <koinos/block_production/federated_producer.hpp>
 
 #include <koinos/conversion.hpp>
-
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 
