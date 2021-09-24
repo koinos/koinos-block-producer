@@ -218,7 +218,7 @@ int main( int argc, char** argv )
             production_context,
             client,
             production_threshold,
-            pow_id,
+            from_hex( pow_id ),
             work_groups
          );
 
