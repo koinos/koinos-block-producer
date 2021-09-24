@@ -182,8 +182,9 @@ void block_producer::submit_block( protocol::block& b )
 
 void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, crypto::digest_size size )
 {
-   std::vector< crypto::multihash > transactions( block.transactions().size() );
+   std::vector< crypto::multihash > transactions;
    std::vector< crypto::multihash > passives;
+   transactions.reserve( block.transactions().size() );
    passives.reserve( 2 * ( block.transactions().size() + 1 ) );
 
    passives.emplace_back( crypto::hash( code, block.passive(), size ) );
@@ -193,7 +194,7 @@ void block_producer::set_merkle_roots( const protocol::block& block, protocol::a
    {
       passives.emplace_back( crypto::hash( code, trx.passive(), size ) );
       passives.emplace_back( crypto::hash( code, trx.signature_data(), size ) );
-      transactions.emplace_back( crypto::hash( code, trx, size ) );
+      transactions.emplace_back( crypto::hash( code, trx.active(), size ) );
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
