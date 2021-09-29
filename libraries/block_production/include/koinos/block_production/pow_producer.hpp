@@ -48,7 +48,7 @@ private:
    std::mutex                                    _cv_mutex;
    std::condition_variable                       _cv;
    boost::asio::steady_timer                     _update_timer;
-   uint64_t                                      _last_known_height;
+   uint64_t                                      _last_known_height = 0;
    boost::asio::steady_timer                     _error_timer;
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
    std::atomic< bool >                           _hashing;

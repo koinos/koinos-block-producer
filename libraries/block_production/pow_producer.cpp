@@ -194,13 +194,14 @@ void pow_producer::find_nonce(
 {
    auto begin_time  = std::chrono::steady_clock::now();
    auto begin_nonce = start;
+   auto id = converter::to< crypto::multihash >( block.id() );
 
    for ( uint256_t current_nonce = start; current_nonce < end; current_nonce++ )
    {
       if ( *done || _production_context.stopped() || _halted )
          break;
 
-      auto proof = hash( crypto::multicodec::sha2_256, current_nonce, block.id() );
+      auto proof = hash( crypto::multicodec::sha2_256, current_nonce, id );
 
       if ( target_met( proof, target ) )
       {
