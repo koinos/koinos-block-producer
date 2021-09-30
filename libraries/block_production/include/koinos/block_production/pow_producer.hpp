@@ -11,13 +11,7 @@
 #include <boost/multiprecision/cpp_int.hpp>
 
 #include <koinos/block_production/block_producer.hpp>
-#include <koinos/pack/classes.hpp>
-
-struct difficulty_metadata_v1;
-struct difficulty_metadata_v2;
-using difficulty_metadata = std::variant<
-   difficulty_metadata_v1,
-   difficulty_metadata_v2 >;
+#include <koinos/contracts/pow/pow.pb.h>
 
 namespace koinos::block_production {
 
@@ -26,6 +20,7 @@ using boost::multiprecision::uint256_t;
 
 using worker_group_type = std::pair< uint256_t, uint256_t >;
 using hash_count_type   = std::atomic< uint64_t >;
+using contract_id_type  = std::string;
 
 class pow_producer : public block_producer
 {
@@ -53,7 +48,7 @@ private:
    std::mutex                                    _cv_mutex;
    std::condition_variable                       _cv;
    boost::asio::steady_timer                     _update_timer;
-   block_height_type                             _last_known_height;
+   uint64_t                                      _last_known_height = 0;
    boost::asio::steady_timer                     _error_timer;
    std::atomic< std::chrono::seconds >           _error_wait_time = std::chrono::seconds( 5 );
    std::atomic< bool >                           _hashing;
@@ -71,10 +66,10 @@ private:
       std::shared_ptr< std::optional< uint256_t > > nonce,
       std::shared_ptr< std::atomic< bool > > done
    );
-   bool target_met( const multihash& hash, uint256_t target );
-   difficulty_metadata get_difficulty_meta();
+   bool target_met( const crypto::multihash& hash, uint256_t target );
+   contracts::pow::difficulty_metadata get_difficulty_meta();
    std::string hashrate_to_string( double hashrate );
-   std::string compute_network_hashrate( const difficulty_metadata& meta );
+   std::string compute_network_hashrate( const contracts::pow::difficulty_metadata& meta );
 };
 
 } // koinos::block_production

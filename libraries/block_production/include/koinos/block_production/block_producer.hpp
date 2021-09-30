@@ -2,13 +2,15 @@
 
 #include <atomic>
 #include <memory>
+#include <variant>
 
 #include <boost/asio/io_context.hpp>
 
-#include <koinos/mq/client.hpp>
 #include <koinos/crypto/elliptic.hpp>
-#include <koinos/pack/classes.hpp>
+#include <koinos/crypto/multihash.hpp>
 #include <koinos/exception.hpp>
+#include <koinos/mq/client.hpp>
+#include <koinos/protocol/protocol.pb.h>
 
 namespace koinos::block_production {
 
@@ -44,8 +46,8 @@ protected:
 
 private:
    void on_run( const boost::system::error_code& ec );
-   void set_merkle_roots( protocol::block& block, uint64_t code, uint64_t size = 0 );
-   timestamp_type now();
+   void set_merkle_roots( const protocol::block&, protocol::active_block_data&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
+   uint64_t now();
 };
 
 } // koinos::block_production

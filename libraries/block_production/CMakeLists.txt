@@ -5,7 +5,7 @@ add_library(koinos_block_production
             federated_producer.cpp
             pow_producer.cpp
             ${HEADERS})
-target_link_libraries(koinos_block_production Koinos::exception Koinos::crypto Koinos::types Koinos::log Koinos::mq)
+target_link_libraries(koinos_block_production Koinos::exception Koinos::crypto Koinos::proto Koinos::log Koinos::mq)
 target_include_directories(koinos_block_production PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_library(Koinos::block_production ALIAS koinos_block_production)
 install(TARGETS

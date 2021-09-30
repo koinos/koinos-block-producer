@@ -15,8 +15,9 @@
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
 #include <koinos/mq/request_handler.hpp>
-#include <koinos/pack/classes.hpp>
-#include <koinos/pack/rt/json.hpp>
+#include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util.hpp>
 
 #define FEDERATED_ALGORITHM                "federated"
@@ -120,7 +121,7 @@ int main( int argc, char** argv )
       auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
       auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
-      auto pow_id_str  = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto pow_id      = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
 
       auto production_threshold = get_option< int64_t >(
          STALE_PRODUCTION_THRESHOLD_OPTION,
@@ -135,11 +136,11 @@ int main( int argc, char** argv )
       KOINOS_ASSERT(
          production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
          koinos::exception,
-         "Stale block production threshold would overflow, maximum value: ${v}",
+         "stale block production threshold would overflow, maximum value: ${v}",
          ("v", std::numeric_limits< int64_t >::max() / 1000)
       );
 
-      KOINOS_ASSERT( jobs > 0, koinos::exception, "Jobs must be greater than 0" );
+      KOINOS_ASSERT( jobs > 0, koinos::exception, "jobs must be greater than 0" );
 
       if ( config.IsNull() )
       {
@@ -153,14 +154,14 @@ int main( int argc, char** argv )
       KOINOS_ASSERT(
          std::filesystem::exists( private_key_file ),
          koinos::exception,
-         "Unable to find private key file at: ${loc}", ("loc", private_key_file.string())
+         "unable to find private key file at: ${loc}", ("loc", private_key_file.string())
       );
 
       std::ifstream ifs( private_key_file );
       std::string private_key_wif( ( std::istreambuf_iterator< char >( ifs ) ), ( std::istreambuf_iterator< char >() ) );
       crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
 
-      LOG(info) << "Public address: " << signing_key.get_public_key().to_address();
+      LOG(info) << "Public address: " << to_hex( signing_key.get_public_key().to_address_bytes() );
 
       auto client = std::make_shared< mq::client >();
 
@@ -175,17 +176,21 @@ int main( int argc, char** argv )
 
       {
          LOG(info) << "Attempting to connect to chain...";
-         pack::json j;
-         pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::chain_reserved_request{} } );
-         client->rpc( service::chain, j.dump() ).get();
+         rpc::chain::chain_request req;
+         req.mutable_reserved();
+         std::string s;
+         req.SerializeToString( &s );
+         client->rpc( service::chain, s ).get();
          LOG(info) << "Established connection to chain";
       }
 
       {
          LOG(info) << "Attempting to connect to mempool...";
-         pack::json j;
-         pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::mempool_reserved_request{} } );
-         client->rpc( service::mempool, j.dump() ).get();
+         rpc::mempool::mempool_request req;
+         req.mutable_reserved();
+         std::string s;
+         req.SerializeToString( &s );
+         client->rpc( service::mempool, s ).get();
          LOG(info) << "Established connection to mempool";
       }
 
@@ -206,17 +211,6 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
-         contract_id_type pow_id;
-
-         try
-         {
-            pack::json j( pow_id_str );
-            pack::from_json( j, pow_id );
-         }
-         catch ( const std::exception& ex )
-         {
-            KOINOS_THROW( koinos::exception, "Could not parse PoW contract ID: ${e}", ("e", ex.what()) );
-         }
 
          producer = std::make_unique< block_production::pow_producer >(
             signing_key,
@@ -224,7 +218,7 @@ int main( int argc, char** argv )
             production_context,
             client,
             production_threshold,
-            pow_id,
+            from_hex( pow_id ),
             work_groups
          );
 
@@ -245,8 +239,8 @@ int main( int argc, char** argv )
             try
             {
                broadcast::block_accepted bam;
-               pack::from_json( pack::json::parse( msg ), bam );
-               producer->on_block_accept( bam.block );
+               bam.ParseFromString( msg );
+               producer->on_block_accept( bam.block() );
             }
             catch( const boost::exception& e )
             {

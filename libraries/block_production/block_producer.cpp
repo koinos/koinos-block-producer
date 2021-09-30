@@ -2,10 +2,12 @@
 
 #include <boost/asio/post.hpp>
 
-#include <koinos/crypto/elliptic.hpp>
-#include <koinos/crypto/multihash.hpp>
+#include <koinos/conversion.hpp>
+#include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
-#include <koinos/pack/classes.hpp>
+#include <koinos/protocol/protocol.pb.h>
+#include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util.hpp>
 
 namespace koinos::block_production {
@@ -51,68 +53,52 @@ protocol::block block_producer::next_block()
 {
    protocol::block b;
 
-   pack::json j;
-   pack::to_json( j, rpc::chain::chain_rpc_request{ rpc::chain::get_head_info_request{} } );
-   auto future = _rpc_client->rpc( service::chain, j.dump() );
+   rpc::chain::chain_request req;
+   req.mutable_get_head_info();
 
-   rpc::chain::chain_rpc_response resp;
-   pack::from_json( pack::json::parse( future.get() ), resp );
+   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
-   rpc::chain::get_head_info_response head_info;
-   std::visit(
-      koinos::overloaded {
-         [&]( const rpc::chain::get_head_info_response& hi )
-         {
-            head_info = hi;
-         },
-         [&]( const rpc::chain::chain_error_response& ce )
-         {
-            KOINOS_THROW( koinos::exception, "Error while retrieving head info: ${e}", ("e", ce.error_text) );
-         },
-         [&]( const auto& p )
-         {
-            KOINOS_THROW( koinos::exception, "Unexpected RPC response when retrieving head info" );
-         }
-   }, resp );
+   rpc::chain::chain_response resp;
+   resp.ParseFromString( future.get() );
 
-   b.header.previous  = head_info.head_topology.id;
-   b.header.height    = head_info.head_topology.height + 1;
-   b.header.timestamp = now();
+   if ( resp.has_error() )
+   {
+      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
+   }
+
+   KOINOS_ASSERT( resp.has_get_head_info(), koinos::exception, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
+   const auto& head_info = resp.get_head_info();
+
+   b.mutable_header()->set_previous( resp.get_head_info().head_topology().id() );
+   b.mutable_header()->set_height( resp.get_head_info().head_topology().height() + 1 );
+   b.mutable_header()->set_timestamp( now() );
 
    return b;
 }
 
 void block_producer::fill_block( protocol::block& b )
 {
-   pack::json j;
-   pack::to_json( j, rpc::mempool::mempool_rpc_request{ rpc::mempool::get_pending_transactions_request{ .limit = 100 } } );
-   auto future = _rpc_client->rpc( service::mempool, j.dump() );
+   rpc::mempool::mempool_request req;
+   req.mutable_get_pending_transactions()->set_limit( 100 );
 
-   rpc::mempool::mempool_rpc_response resp;
-   pack::from_json( pack::json::parse( future.get() ), resp );
+   auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( req ) );
 
-   rpc::mempool::get_pending_transactions_response mempool;
-   std::visit(
-      koinos::overloaded {
-         [&]( const rpc::mempool::get_pending_transactions_response& mpr )
-         {
-            mempool = mpr;
-         },
-         [&]( const rpc::mempool::mempool_error_response& ce )
-         {
-            KOINOS_THROW( koinos::exception, "Error while retrieving transaction from the mempool: ${e}", ("e", ce.error_text) );
-         },
-         [&]( const auto& p )
-         {
-            KOINOS_THROW( koinos::exception, "Unexpected RPC response when retrieving transaction from the mempool" );
-         }
-   }, resp );
+   rpc::mempool::mempool_response resp;
+   resp.ParseFromString( future.get() );
 
-   const uint128 max_block_resources             = 100'000'000;
-   const std::size_t max_transactions_to_process = 100;
-   uint128 block_resources                       = 0;
+   if ( resp.has_error() )
+   {
+      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
+   }
 
-   for ( std::size_t transaction_index = 0; transaction_index < mempool.transactions.size(); transaction_index++ )
+   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
+   const auto& pending_transactions = resp.get_pending_transactions();
+
+   const uint64_t max_block_resources    = 100'000'000;
+   const int max_transactions_to_process = 100;
+   uint64_t block_resources              = 0;
+
+   for ( int transaction_index = 0; transaction_index < pending_transactions.transactions_size(); transaction_index++ )
    {
       // Only try to process a set number of transactions
       if ( transaction_index > max_transactions_to_process - 1 )
@@ -122,59 +108,57 @@ void block_producer::fill_block( protocol::block& b )
       if ( block_resources >= max_block_resources * 75 / 100 )
          break;
 
-      auto& transaction = mempool.transactions.at( transaction_index );
+      const auto& transaction = pending_transactions.transactions( transaction_index );
 
-      transaction.active_data.unbox();
+      protocol::active_transaction_data active;
 
-      auto new_block_resources = block_resources + transaction.active_data->resource_limit;
-
-      if ( new_block_resources <= max_block_resources )
+      if ( active.ParseFromString( transaction.active() ) )
       {
-         b.transactions.push_back( transaction );
-         block_resources = new_block_resources;
+         if ( active.resource_limit() == 0 ) continue;
+
+         auto new_block_resources = block_resources + active.resource_limit();
+
+         if ( new_block_resources <= max_block_resources )
+         {
+            *b.add_transactions() = transaction;
+            block_resources = new_block_resources;
+         }
       }
    }
 
-   b.passive_data = protocol::passive_block_data();
-   b.active_data  = protocol::active_block_data();
+   protocol::active_block_data active;
+   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
 
-   b.active_data.make_mutable();
+   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
 
-   auto signer_address   = _signing_key.get_public_key().to_address();
-   b.active_data->signer = protocol::account_type( signer_address.begin(), signer_address.end() );
-
-   set_merkle_roots( b, CRYPTO_SHA2_256_ID );
+   protocol::passive_block_data passive;
+   b.set_active( converter::as< std::string >( active ) );
+   b.set_passive( converter::as< std::string >( passive ) );
 }
 
 void block_producer::submit_block( protocol::block& b )
 {
-   rpc::chain::submit_block_request block_req;
-   block_req.block = b;
-   block_req.verify_passive_data = true;
-   block_req.verify_block_signature = true;
-   block_req.verify_transaction_signatures = true;
+   rpc::chain::chain_request req;
+   auto block_req = req.mutable_submit_block();
+   block_req->mutable_block()->CopyFrom( b );
+   block_req->set_verify_passive_data( true );
+   block_req->set_verify_block_signature( true );
+   block_req->set_verify_transaction_signature( true );
 
-   pack::json j;
-   pack::to_json( j, rpc::chain::chain_rpc_request{ block_req } );
-   auto future = _rpc_client->rpc( service::chain, j.dump() );
+   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
 
-   rpc::chain::chain_rpc_response resp;
-   pack::from_json( pack::json::parse( future.get() ), resp );
-   std::visit(
-      koinos::overloaded {
-         [&]( const rpc::chain::submit_block_response& )
-         {
-            LOG(info) << "Produced block - Height: " << block_req.block.header.height << ", ID: " << block_req.block.id;
-         },
-         [&]( const rpc::chain::chain_error_response& ce )
-         {
-            LOG(warning) << "Error while submitting block: " << ce.error_text;
-         },
-         [&]( const auto& p )
-         {
-            KOINOS_THROW( koinos::exception, "Unexpected RPC response while submitting block" );
-         }
-   }, resp );
+   rpc::chain::chain_response resp;
+   resp.ParseFromString( future.get() );
+
+   if ( resp.has_error() )
+   {
+      LOG(warning) << "Error while submitting block: " << resp.error().message();
+      return;
+   }
+
+   KOINOS_ASSERT( resp.has_submit_block(), koinos::exception, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
+
+   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << converter::to< crypto::multihash >( b.id() );
 }
 
 //
@@ -196,52 +180,51 @@ void block_producer::submit_block( protocol::block& b )
 //                +----------------------+      +----------------------+
 //
 
-void block_producer::set_merkle_roots( protocol::block& block, uint64_t code, uint64_t size )
+void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, crypto::digest_size size )
 {
-   std::vector< multihash > trx_active_hashes( block.transactions.size() );
-   std::vector< multihash > passive_hashes( 2 * ( block.transactions.size() + 1 ) );
+   std::vector< crypto::multihash > transactions;
+   std::vector< crypto::multihash > passives;
+   transactions.reserve( block.transactions().size() );
+   passives.reserve( 2 * ( block.transactions().size() + 1 ) );
 
-   passive_hashes[0] = crypto::hash( code, block.passive_data, size );
-   passive_hashes[1] = crypto::empty_hash( code, size );
+   passives.emplace_back( crypto::hash( code, block.passive(), size ) );
+   passives.emplace_back( crypto::multihash::empty( code ) );
 
-   // Hash transaction actives, passives, and signatures for merkle roots
-   for ( size_t i = 0; i < block.transactions.size(); i++ )
+   for ( const auto& trx : block.transactions() )
    {
-      trx_active_hashes[i]      = crypto::hash(      code, block.transactions[i].active_data,    size );
-      passive_hashes[2*(i+1)]   = crypto::hash(      code, block.transactions[i].passive_data,   size );
-      passive_hashes[2*(i+1)+1] = crypto::hash_blob( code, block.transactions[i].signature_data, size );
+      passives.emplace_back( crypto::hash( code, trx.passive(), size ) );
+      passives.emplace_back( crypto::hash( code, trx.signature_data(), size ) );
+      transactions.emplace_back( crypto::hash( code, trx.active(), size ) );
    }
 
-   crypto::merkle_hash_leaves( trx_active_hashes, code, size );
-   crypto::merkle_hash_leaves( passive_hashes,    code, size );
+   auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
+   auto passives_merkle_tree = crypto::merkle_tree( code, passives );
 
-   block.active_data->transaction_merkle_root  = trx_active_hashes[0];
-   block.active_data->passive_data_merkle_root = passive_hashes[0];
+   active_data.set_transaction_merkle_root( converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
+   active_data.set_passive_data_merkle_root( converter::as< std::string >( passives_merkle_tree.root()->hash() ) );
 }
 
-timestamp_type block_producer::now()
+uint64_t block_producer::now()
 {
-   auto now = timestamp_type {
-      uint64_t( std::chrono::duration_cast< std::chrono::milliseconds >(
-         std::chrono::system_clock::now().time_since_epoch()
-      ).count() )
-   };
+   auto now = uint64_t( std::chrono::duration_cast< std::chrono::milliseconds >(
+      std::chrono::system_clock::now().time_since_epoch()
+   ).count() );
 
-   auto last_block_time = timestamp_type{ _last_block_time };
+   uint64_t last_block_time = _last_block_time;
 
    return last_block_time > now ? last_block_time : now;
 }
 
 void block_producer::on_block_accept( const protocol::block& b )
 {
-   if ( b.header.timestamp.t > _last_block_time )
-      _last_block_time = b.header.timestamp.t;
+   if ( b.header().timestamp() > _last_block_time )
+      _last_block_time = b.header().timestamp();
 
    if ( _production_threshold >= 0 )
    {
-      auto now = int128_t( std::chrono::duration_cast< std::chrono::milliseconds >(
+      auto now = std::chrono::duration_cast< std::chrono::milliseconds >(
          std::chrono::system_clock::now().time_since_epoch()
-      ).count() );
+      ).count();
 
       auto threshold_ms = _production_threshold * 1000;
       auto time_delta   = now - _last_block_time.load();
