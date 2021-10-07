@@ -114,9 +114,9 @@ void block_producer::fill_block( protocol::block& b )
 
       if ( active.ParseFromString( transaction.active() ) )
       {
-         if ( active.resource_limit() == 0 ) continue;
+         if ( active.rc_limit() == 0 ) continue;
 
-         auto new_block_resources = block_resources + active.resource_limit();
+         auto new_block_resources = block_resources + active.rc_limit();
 
          if ( new_block_resources <= max_block_resources )
          {
