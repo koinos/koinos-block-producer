@@ -94,7 +94,7 @@ void block_producer::fill_block( protocol::block& b )
    KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
    const auto& pending_transactions = resp.get_pending_transactions();
 
-   const uint64_t max_block_resources    = 100'000'000;
+   const uint64_t max_block_resources    = ~0;
    const int max_transactions_to_process = 100;
    uint64_t block_resources              = 0;
 
