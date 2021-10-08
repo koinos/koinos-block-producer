@@ -245,9 +245,9 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
    KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
 
-   contracts::pow::difficulty_metadata meta;
+   contracts::pow::get_difficulty_metadata_result meta;
    meta.ParseFromString( resp.read_contract().result() );
-   return meta;
+   return meta.value();
 }
 
 bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
