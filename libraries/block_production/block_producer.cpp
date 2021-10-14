@@ -63,10 +63,10 @@ protocol::block block_producer::next_block()
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_get_head_info(), koinos::exception, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_get_head_info(), rpc_failure, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
    const auto& head_info = resp.get_head_info();
 
    b.mutable_header()->set_previous( resp.get_head_info().head_topology().id() );
@@ -88,40 +88,75 @@ void block_producer::fill_block( protocol::block& b )
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "error while retrieving head info: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_get_pending_transactions(), koinos::exception, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
+   KOINOS_ASSERT( resp.has_get_pending_transactions(), rpc_failure, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
    const auto& pending_transactions = resp.get_pending_transactions();
 
-   const uint64_t max_block_resources    = ~0;
-   const int max_transactions_to_process = 100;
-   uint64_t block_resources              = 0;
+   rpc::chain::chain_request req2;
+   req2.mutable_get_resource_limits();
 
-   for ( int transaction_index = 0; transaction_index < pending_transactions.transactions_size(); transaction_index++ )
+   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
+
+   rpc::chain::chain_response resp2;
+   resp2.ParseFromString( future2.get() );
+
+   if ( resp2.has_error() )
+   {
+      KOINOS_THROW( rpc_failure, "unable to retrieve block resources, ${e}", ("e", resp.error().message()) );
+   }
+
+   KOINOS_ASSERT( resp2.has_get_resource_limits(), rpc_failure, "unexpected RPC response when retrieving block resources from chain", ("r", resp2) );
+   const auto& block_resource_limits = resp2.get_resource_limits().resource_limit_data();
+
+   const int max_transactions_to_process = 100;
+   uint64_t disk_storage_count = 0;
+   uint64_t network_bandwidth_count = 0;
+   uint64_t compute_bandwidth_count = 0;
+   const uint64_t resource_percent_lower_threshold = 75;
+   const uint64_t resource_percent_upper_threshold = 90;
+
+   for ( int ptransaction_index = 0; ptransaction_index < pending_transactions.pending_transactions_size(); ptransaction_index++ )
    {
       // Only try to process a set number of transactions
-      if ( transaction_index > max_transactions_to_process - 1 )
+      if ( ptransaction_index > max_transactions_to_process - 1 )
          break;
 
-      // If we fill at least 75% of the block we proceed
-      if ( block_resources >= max_block_resources * 75 / 100 )
+      // If we fill at least 75% of a given block resource we proceed
+      if ( disk_storage_count >= block_resource_limits.disk_storage_limit() * resource_percent_lower_threshold / 100 )
          break;
 
-      const auto& transaction = pending_transactions.transactions( transaction_index );
+      if ( network_bandwidth_count >= block_resource_limits.network_bandwidth_limit() * resource_percent_lower_threshold / 100 )
+         break;
+
+      if ( compute_bandwidth_count >= block_resource_limits.compute_bandwidth_limit() * resource_percent_lower_threshold / 100 )
+         break;
+
+      const auto& ptransaction = pending_transactions.pending_transactions( ptransaction_index );
+      const auto& transaction = ptransaction.transaction();
 
       protocol::active_transaction_data active;
 
       if ( active.ParseFromString( transaction.active() ) )
       {
-         if ( active.rc_limit() == 0 ) continue;
+         if ( active.rc_limit() == 0 )
+            continue;
 
-         auto new_block_resources = block_resources + active.rc_limit();
+         auto new_disk_storage_count      = ptransaction.disk_storage_used() + disk_storage_count;
+         auto new_network_bandwidth_count = ptransaction.network_bandwidth_used() + network_bandwidth_count;
+         auto new_compute_bandwidth_count = ptransaction.compute_bandwidth_used() + compute_bandwidth_count;
 
-         if ( new_block_resources <= max_block_resources )
+         bool disk_storage_within_bounds      = new_disk_storage_count      <= block_resource_limits.disk_storage_limit()      * resource_percent_upper_threshold / 100;
+         bool network_bandwidth_within_bounds = new_network_bandwidth_count <= block_resource_limits.network_bandwidth_limit() * resource_percent_upper_threshold / 100;
+         bool compute_bandwidth_within_bounds = new_compute_bandwidth_count <= block_resource_limits.compute_bandwidth_limit() * resource_percent_upper_threshold / 100;
+
+         if ( disk_storage_within_bounds && network_bandwidth_within_bounds && compute_bandwidth_within_bounds )
          {
-            *b.add_transactions() = transaction;
-            block_resources = new_block_resources;
+            *b.add_transactions()   = transaction;
+            disk_storage_count      = new_disk_storage_count;
+            network_bandwidth_count = new_network_bandwidth_count;
+            compute_bandwidth_count = new_compute_bandwidth_count;
          }
       }
    }
@@ -156,7 +191,7 @@ void block_producer::submit_block( protocol::block& b )
       return;
    }
 
-   KOINOS_ASSERT( resp.has_submit_block(), koinos::exception, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_submit_block(), rpc_failure, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
    LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << converter::to< crypto::multihash >( b.id() );
 }
