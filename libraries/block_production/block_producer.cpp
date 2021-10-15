@@ -78,37 +78,45 @@ protocol::block block_producer::next_block()
 
 void block_producer::fill_block( protocol::block& b )
 {
-   rpc::mempool::mempool_request req;
-   req.mutable_get_pending_transactions()->set_limit( 100 );
+   rpc::mempool::mempool_request mempool_req;
+   mempool_req.mutable_get_pending_transactions()->set_limit( 100 );
 
-   auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( req ) );
+   auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( mempool_req ) );
 
-   rpc::mempool::mempool_response resp;
-   resp.ParseFromString( future.get() );
+   rpc::mempool::mempool_response mempool_resp;
 
-   if ( resp.has_error() )
+   if ( !mempool_resp.ParseFromString( future.get() ) )
    {
-      KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( rpc_failure, "unable to parse mempool response" );
    }
 
-   KOINOS_ASSERT( resp.has_get_pending_transactions(), rpc_failure, "unexpected RPC response when retrieving pending transactions from mempool", ("r", resp) );
-   const auto& pending_transactions = resp.get_pending_transactions();
-
-   rpc::chain::chain_request req2;
-   req2.mutable_get_resource_limits();
-
-   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
-
-   rpc::chain::chain_response resp2;
-   resp2.ParseFromString( future2.get() );
-
-   if ( resp2.has_error() )
+   if ( mempool_resp.has_error() )
    {
-      KOINOS_THROW( rpc_failure, "unable to retrieve block resources, ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( rpc_failure, "unable to retrieve pending transactions, ${e}", ("e", mempool_resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp2.has_get_resource_limits(), rpc_failure, "unexpected RPC response when retrieving block resources from chain", ("r", resp2) );
-   const auto& block_resource_limits = resp2.get_resource_limits().resource_limit_data();
+   KOINOS_ASSERT( mempool_resp.has_get_pending_transactions(), rpc_failure, "unexpected RPC response when retrieving pending transactions from mempool", ("r", mempool_resp) );
+   const auto& pending_transactions = mempool_resp.get_pending_transactions();
+
+   rpc::chain::chain_request chain_req;
+   chain_req.mutable_get_resource_limits();
+
+   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( chain_req ) );
+
+   rpc::chain::chain_response chain_resp;
+
+   if ( !chain_resp.ParseFromString( future2.get() ) )
+   {
+      KOINOS_THROW( rpc_failure, "unable to parse chain response" );
+   }
+
+   if ( chain_resp.has_error() )
+   {
+      KOINOS_THROW( rpc_failure, "unable to retrieve block resources, ${e}", ("e", mempool_resp.error().message()) );
+   }
+
+   KOINOS_ASSERT( chain_resp.has_get_resource_limits(), rpc_failure, "unexpected RPC response when retrieving block resources from chain", ("r", chain_resp) );
+   const auto& block_resource_limits = chain_resp.get_resource_limits().resource_limit_data();
 
    const int max_transactions_to_process = 100;
    uint64_t disk_storage_count = 0;
@@ -160,6 +168,13 @@ void block_producer::fill_block( protocol::block& b )
          }
       }
    }
+
+   uint64_t disk_utilized = disk_storage_count / block_resource_limits.disk_storage_limit();
+
+   LOG(info) << "Proposed block contains " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing "
+             << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
+             << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
+             << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
 
    protocol::active_block_data active;
    active.set_signer( _signing_key.get_public_key().to_address_bytes() );
