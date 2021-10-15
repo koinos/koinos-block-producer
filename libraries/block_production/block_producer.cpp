@@ -169,9 +169,7 @@ void block_producer::fill_block( protocol::block& b )
       }
    }
 
-   uint64_t disk_utilized = disk_storage_count / block_resource_limits.disk_storage_limit();
-
-   LOG(info) << "Proposed block contains " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing "
+   LOG(info) << "Created block containing " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing "
              << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
              << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
