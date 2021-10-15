@@ -17,12 +17,16 @@ block_producer::block_producer(
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
-   int64_t production_threshold ) :
+   int64_t production_threshold,
+   uint64_t resources_lower_bound,
+   uint64_t resources_upper_bound ) :
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
    _rpc_client( rpc_client ),
-   _production_threshold( production_threshold )
+   _production_threshold( production_threshold ),
+   _resources_lower_bound( resources_lower_bound ),
+   _resources_upper_bound( resources_upper_bound )
 {
    boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
 }
@@ -122,8 +126,6 @@ void block_producer::fill_block( protocol::block& b )
    uint64_t disk_storage_count = 0;
    uint64_t network_bandwidth_count = 0;
    uint64_t compute_bandwidth_count = 0;
-   const uint64_t resource_percent_lower_threshold = 75;
-   const uint64_t resource_percent_upper_threshold = 90;
 
    for ( int ptransaction_index = 0; ptransaction_index < pending_transactions.pending_transactions_size(); ptransaction_index++ )
    {
@@ -132,13 +134,13 @@ void block_producer::fill_block( protocol::block& b )
          break;
 
       // If we fill at least 75% of a given block resource we proceed
-      if ( disk_storage_count >= block_resource_limits.disk_storage_limit() * resource_percent_lower_threshold / 100 )
+      if ( disk_storage_count >= block_resource_limits.disk_storage_limit() * _resources_lower_bound / 100 )
          break;
 
-      if ( network_bandwidth_count >= block_resource_limits.network_bandwidth_limit() * resource_percent_lower_threshold / 100 )
+      if ( network_bandwidth_count >= block_resource_limits.network_bandwidth_limit() * _resources_lower_bound / 100 )
          break;
 
-      if ( compute_bandwidth_count >= block_resource_limits.compute_bandwidth_limit() * resource_percent_lower_threshold / 100 )
+      if ( compute_bandwidth_count >= block_resource_limits.compute_bandwidth_limit() * _resources_lower_bound / 100 )
          break;
 
       const auto& ptransaction = pending_transactions.pending_transactions( ptransaction_index );
@@ -155,9 +157,9 @@ void block_producer::fill_block( protocol::block& b )
          auto new_network_bandwidth_count = ptransaction.network_bandwidth_used() + network_bandwidth_count;
          auto new_compute_bandwidth_count = ptransaction.compute_bandwidth_used() + compute_bandwidth_count;
 
-         bool disk_storage_within_bounds      = new_disk_storage_count      <= block_resource_limits.disk_storage_limit()      * resource_percent_upper_threshold / 100;
-         bool network_bandwidth_within_bounds = new_network_bandwidth_count <= block_resource_limits.network_bandwidth_limit() * resource_percent_upper_threshold / 100;
-         bool compute_bandwidth_within_bounds = new_compute_bandwidth_count <= block_resource_limits.compute_bandwidth_limit() * resource_percent_upper_threshold / 100;
+         bool disk_storage_within_bounds      = new_disk_storage_count      <= block_resource_limits.disk_storage_limit()      * _resources_upper_bound / 100;
+         bool network_bandwidth_within_bounds = new_network_bandwidth_count <= block_resource_limits.network_bandwidth_limit() * _resources_upper_bound / 100;
+         bool compute_bandwidth_within_bounds = new_compute_bandwidth_count <= block_resource_limits.compute_bandwidth_limit() * _resources_upper_bound / 100;
 
          if ( disk_storage_within_bounds && network_bandwidth_within_bounds && compute_bandwidth_within_bounds )
          {

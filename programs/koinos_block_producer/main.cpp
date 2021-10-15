@@ -38,6 +38,10 @@
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
 #define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
 #define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
+#define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
+#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
+#define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
+#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 90 )
 
 using namespace boost;
 using namespace koinos;
@@ -122,6 +126,8 @@ int main( int argc, char** argv )
       auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id      = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto rcs_lbound  = get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto rcs_ubound  = get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
 
       auto production_threshold = get_option< int64_t >(
          STALE_PRODUCTION_THRESHOLD_OPTION,
@@ -162,6 +168,7 @@ int main( int argc, char** argv )
       crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
 
       LOG(info) << "Public address: " << to_hex( signing_key.get_public_key().to_address_bytes() );
+      LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
 
       auto client = std::make_shared< mq::client >();
 
@@ -205,7 +212,9 @@ int main( int argc, char** argv )
             main_context,
             production_context,
             client,
-            production_threshold
+            production_threshold,
+            rcs_lbound,
+            rcs_ubound
          );
       }
       else if ( algorithm == POW_ALGORITHM )
@@ -218,6 +227,8 @@ int main( int argc, char** argv )
             production_context,
             client,
             production_threshold,
+            rcs_lbound,
+            rcs_ubound,
             from_hex( pow_id ),
             work_groups
          );
