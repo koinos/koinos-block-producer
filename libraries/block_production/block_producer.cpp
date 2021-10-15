@@ -19,14 +19,16 @@ block_producer::block_producer(
    std::shared_ptr< mq::client > rpc_client,
    int64_t production_threshold,
    uint64_t resources_lower_bound,
-   uint64_t resources_upper_bound ) :
+   uint64_t resources_upper_bound,
+   uint64_t max_inclusion_attempts ) :
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
    _rpc_client( rpc_client ),
    _production_threshold( production_threshold ),
    _resources_lower_bound( resources_lower_bound ),
-   _resources_upper_bound( resources_upper_bound )
+   _resources_upper_bound( resources_upper_bound ),
+   _max_inclusion_attempts( max_inclusion_attempts )
 {
    boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
 }
@@ -122,15 +124,14 @@ void block_producer::fill_block( protocol::block& b )
    KOINOS_ASSERT( chain_resp.has_get_resource_limits(), rpc_failure, "unexpected RPC response when retrieving block resources from chain", ("r", chain_resp) );
    const auto& block_resource_limits = chain_resp.get_resource_limits().resource_limit_data();
 
-   const int max_transactions_to_process = 100;
-   uint64_t disk_storage_count = 0;
+   uint64_t disk_storage_count      = 0;
    uint64_t network_bandwidth_count = 0;
    uint64_t compute_bandwidth_count = 0;
 
    for ( int ptransaction_index = 0; ptransaction_index < pending_transactions.pending_transactions_size(); ptransaction_index++ )
    {
       // Only try to process a set number of transactions
-      if ( ptransaction_index > max_transactions_to_process - 1 )
+      if ( ptransaction_index > _max_inclusion_attempts - 1 )
          break;
 
       // If we fill at least 75% of a given block resource we proceed

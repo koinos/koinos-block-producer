@@ -38,13 +38,23 @@ pow_producer::pow_producer(
    int64_t production_threshold,
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
+   uint64_t max_inclusion_attempts,
    contract_id_type pow_contract_id,
    std::size_t worker_groups ) :
-   block_producer( signing_key, main_context, production_context, rpc_client, production_threshold, resources_lower_bound, resources_upper_bound ),
-   _pow_contract_id( pow_contract_id ),
-   _update_timer( _main_context ),
-   _error_timer( _production_context ),
-   _num_worker_groups( worker_groups )
+      block_producer(
+         signing_key,
+         main_context,
+         production_context,
+         rpc_client,
+         production_threshold,
+         resources_lower_bound,
+         resources_upper_bound,
+         max_inclusion_attempts
+      ),
+      _pow_contract_id( pow_contract_id ),
+      _update_timer( _main_context ),
+      _error_timer( _production_context ),
+      _num_worker_groups( worker_groups )
 {
    constexpr uint512_t max_nonce = std::numeric_limits< uint256_t >::max();
    for ( std::size_t worker_index = 0; worker_index < _num_worker_groups; worker_index++ )
