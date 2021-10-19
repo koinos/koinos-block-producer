@@ -2,13 +2,13 @@
 
 #include <boost/asio/post.hpp>
 
-#include <koinos/conversion.hpp>
 #include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/chain/chain_rpc.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
-#include <koinos/util.hpp>
+#include <koinos/util/conversion.hpp>
+#include <koinos/util/services.hpp>
 
 namespace koinos::block_production {
 
@@ -62,7 +62,7 @@ protocol::block block_producer::next_block()
    rpc::chain::chain_request req;
    req.mutable_get_head_info();
 
-   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
+   auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ) );
 
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
@@ -90,8 +90,8 @@ void block_producer::fill_block( protocol::block& b )
    rpc::chain::chain_request chain_req;
    chain_req.mutable_get_resource_limits();
 
-   auto future  = _rpc_client->rpc( service::mempool, converter::as< std::string >( mempool_req ) );
-   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( chain_req ) );
+   auto future  = _rpc_client->rpc( util::service::mempool, util::converter::as< std::string >( mempool_req ) );
+   auto future2 = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( chain_req ) );
 
    rpc::mempool::mempool_response mempool_resp;
 
@@ -182,8 +182,8 @@ void block_producer::fill_block( protocol::block& b )
    set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
 
    protocol::passive_block_data passive;
-   b.set_active( converter::as< std::string >( active ) );
-   b.set_passive( converter::as< std::string >( passive ) );
+   b.set_active( util::converter::as< std::string >( active ) );
+   b.set_passive( util::converter::as< std::string >( passive ) );
 }
 
 void block_producer::submit_block( protocol::block& b )
@@ -195,7 +195,7 @@ void block_producer::submit_block( protocol::block& b )
    block_req->set_verify_block_signature( true );
    block_req->set_verify_transaction_signature( true );
 
-   auto future = _rpc_client->rpc( service::chain, converter::as< std::string >( req ) );
+   auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ) );
 
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
@@ -208,7 +208,7 @@ void block_producer::submit_block( protocol::block& b )
 
    KOINOS_ASSERT( resp.has_submit_block(), rpc_failure, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
-   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << converter::to< crypto::multihash >( b.id() );
+   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() );
 }
 
 //
@@ -250,8 +250,8 @@ void block_producer::set_merkle_roots( const protocol::block& block, protocol::a
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
    auto passives_merkle_tree = crypto::merkle_tree( code, passives );
 
-   active_data.set_transaction_merkle_root( converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
-   active_data.set_passive_data_merkle_root( converter::as< std::string >( passives_merkle_tree.root()->hash() ) );
+   active_data.set_transaction_merkle_root( util::converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
+   active_data.set_passive_data_merkle_root( util::converter::as< std::string >( passives_merkle_tree.root()->hash() ) );
 }
 
 uint64_t block_producer::now()
