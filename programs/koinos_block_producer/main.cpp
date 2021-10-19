@@ -38,6 +38,12 @@
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
 #define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
 #define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
+#define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
+#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
+#define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
+#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 90 )
+#define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
+#define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 100 )
 
 using namespace boost;
 using namespace koinos;
@@ -81,6 +87,9 @@ int main( int argc, char** argv )
          (WORK_GROUPS_OPTION               ",w", program_options::value< uint64_t    >(), "The number of worker groups")
          (PRIVATE_KEY_FILE_OPTION          ",p", program_options::value< std::string >(), "The private key file")
          (POW_CONTRACT_ID_OPTION           ",c", program_options::value< std::string >(), "The PoW contract ID")
+         (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
+         (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
+         (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
          (STALE_PRODUCTION_THRESHOLD_OPTION",s",
             program_options::value< int64_t >(), "The distance of time in seconds from head where production should begin (-1 to disable)");
 
@@ -114,14 +123,17 @@ int main( int argc, char** argv )
          block_producer_config = config[ service::block_producer ];
       }
 
-      auto amqp_url    = get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
-      auto log_level   = get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
-      auto instance_id = get_option< std::string >( INSTANCE_ID_OPTION, random_alphanumeric( 5 ), args, block_producer_config, global_config );
-      auto algorithm   = get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
-      auto jobs        = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
-      auto work_groups = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
-      auto pk_file     = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
-      auto pow_id      = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto amqp_url     = get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
+      auto log_level    = get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
+      auto instance_id  = get_option< std::string >( INSTANCE_ID_OPTION, random_alphanumeric( 5 ), args, block_producer_config, global_config );
+      auto algorithm    = get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
+      auto jobs         = get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
+      auto work_groups  = get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
+      auto pk_file      = get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
+      auto pow_id       = get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto rcs_lbound   = get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto rcs_ubound   = get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto max_attempts = get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
 
       auto production_threshold = get_option< int64_t >(
          STALE_PRODUCTION_THRESHOLD_OPTION,
@@ -132,6 +144,9 @@ int main( int argc, char** argv )
       );
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
+
+      KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, koinos::exception, "resource lower bound out of range [0..100]" );
+      KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, koinos::exception, "resource upper bound out of range [0..100]" );
 
       KOINOS_ASSERT(
          production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
@@ -162,6 +177,8 @@ int main( int argc, char** argv )
       crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
 
       LOG(info) << "Public address: " << to_hex( signing_key.get_public_key().to_address_bytes() );
+      LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
+      LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
       auto client = std::make_shared< mq::client >();
 
@@ -205,7 +222,10 @@ int main( int argc, char** argv )
             main_context,
             production_context,
             client,
-            production_threshold
+            production_threshold,
+            rcs_lbound,
+            rcs_ubound,
+            max_attempts
          );
       }
       else if ( algorithm == POW_ALGORITHM )
@@ -218,6 +238,9 @@ int main( int argc, char** argv )
             production_context,
             client,
             production_threshold,
+            rcs_lbound,
+            rcs_ubound,
+            max_attempts,
             from_hex( pow_id ),
             work_groups
          );

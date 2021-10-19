@@ -14,6 +14,9 @@
 
 namespace koinos::block_production {
 
+KOINOS_DECLARE_EXCEPTION( block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( rpc_failure, block_production_exception );
+
 class block_producer
 {
 public:
@@ -22,7 +25,10 @@ public:
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client,
-      int64_t production_threshold
+      int64_t production_threshold,
+      uint64_t resources_lower_bound,
+      uint64_t resources_upper_bound,
+      uint64_t max_inclusion_attempts
    );
    virtual ~block_producer();
 
@@ -43,6 +49,9 @@ protected:
    std::atomic< uint64_t >          _last_block_time = 0;
    std::atomic< bool >              _halted = true;
    const int64_t                    _production_threshold;
+   const uint64_t                   _resources_lower_bound;
+   const uint64_t                   _resources_upper_bound;
+   const uint64_t                   _max_inclusion_attempts;
 
 private:
    void on_run( const boost::system::error_code& ec );
