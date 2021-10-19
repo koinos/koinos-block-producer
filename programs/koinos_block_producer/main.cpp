@@ -145,6 +145,9 @@ int main( int argc, char** argv )
 
       initialize_logging( service::block_producer, instance_id, log_level, basedir / service::block_producer );
 
+      KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, koinos::exception, "resource lower bound out of range [0..100]" );
+      KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, koinos::exception, "resource upper bound out of range [0..100]" );
+
       KOINOS_ASSERT(
          production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
          koinos::exception,

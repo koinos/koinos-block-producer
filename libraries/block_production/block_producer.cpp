@@ -87,7 +87,11 @@ void block_producer::fill_block( protocol::block& b )
    rpc::mempool::mempool_request mempool_req;
    mempool_req.mutable_get_pending_transactions()->set_limit( 100 );
 
-   auto future = _rpc_client->rpc( service::mempool, converter::as< std::string >( mempool_req ) );
+   rpc::chain::chain_request chain_req;
+   chain_req.mutable_get_resource_limits();
+
+   auto future  = _rpc_client->rpc( service::mempool, converter::as< std::string >( mempool_req ) );
+   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( chain_req ) );
 
    rpc::mempool::mempool_response mempool_resp;
 
@@ -103,11 +107,6 @@ void block_producer::fill_block( protocol::block& b )
 
    KOINOS_ASSERT( mempool_resp.has_get_pending_transactions(), rpc_failure, "unexpected RPC response when retrieving pending transactions from mempool", ("r", mempool_resp) );
    const auto& pending_transactions = mempool_resp.get_pending_transactions();
-
-   rpc::chain::chain_request chain_req;
-   chain_req.mutable_get_resource_limits();
-
-   auto future2 = _rpc_client->rpc( service::chain, converter::as< std::string >( chain_req ) );
 
    rpc::chain::chain_response chain_resp;
 
@@ -172,7 +171,7 @@ void block_producer::fill_block( protocol::block& b )
       }
    }
 
-   LOG(info) << "Created block containing " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing "
+   LOG(info) << "Created block containing " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing approximately "
              << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
              << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
