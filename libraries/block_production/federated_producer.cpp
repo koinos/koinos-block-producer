@@ -1,8 +1,8 @@
 #include <koinos/block_production/federated_producer.hpp>
 
-#include <koinos/conversion.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
+#include <koinos/util/conversion.hpp>
 
 #include <boost/asio/post.hpp>
 
@@ -48,7 +48,7 @@ void federated_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto id = crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() );
-      block.set_id( converter::as< std::string >( id ) );
+      block.set_id( util::converter::as< std::string >( id ) );
       auto block_signature = std::string( (const char*)_signing_key.sign_compact( id ).data(), sizeof( crypto::recoverable_signature ) );
       block.set_signature_data( block_signature );
       submit_block( block );

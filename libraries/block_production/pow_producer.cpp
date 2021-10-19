@@ -7,12 +7,13 @@
 
 #include <koinos/bigint.hpp>
 #include <koinos/block_production/pow_producer.hpp>
-#include <koinos/conversion.hpp>
+#include <koinos/contracts/pow/pow.pb.h>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
-#include <koinos/contracts/pow/pow.pb.h>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/util/conversion.hpp>
+#include <koinos/util/services.hpp>
 
 const uint32_t get_difficulty_entrypoint = 1249216561;
 
@@ -104,9 +105,9 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto block = next_block();
       fill_block( block );
       auto diff_meta = get_difficulty_meta();
-      auto target = converter::to< uint256_t >( diff_meta.target() );
+      auto target = util::converter::to< uint256_t >( diff_meta.target() );
 
-      block.set_id( converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ) ) );
+      block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ) ) );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
@@ -168,10 +169,10 @@ void pow_producer::produce( const boost::system::error_code& ec )
       LOG(info) << "Proof: " << crypto::hash( crypto::multicodec::sha2_256, block_nonce, block.id() );
 
       contracts::pow::pow_signature_data pow_data;
-      pow_data.set_nonce( converter::as< std::string >( block_nonce ) );
-      pow_data.set_recoverable_signature( converter::as< std::string >( _signing_key.sign_compact( converter::to< crypto::multihash >( block.id() ) ) ) );
+      pow_data.set_nonce( util::converter::as< std::string >( block_nonce ) );
+      pow_data.set_recoverable_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( block.id() ) ) ) );
 
-      block.set_signature_data( converter::as< std::string >( pow_data ) );
+      block.set_signature_data( util::converter::as< std::string >( pow_data ) );
 
       submit_block( block );
       _error_wait_time = 5s;
@@ -206,7 +207,7 @@ void pow_producer::find_nonce(
 {
    auto begin_time  = std::chrono::steady_clock::now();
    auto begin_nonce = start;
-   auto id = converter::to< crypto::multihash >( block.id() );
+   auto id = util::converter::to< crypto::multihash >( block.id() );
 
    for ( uint256_t current_nonce = start; current_nonce < end; current_nonce++ )
    {
@@ -245,7 +246,7 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
    std::string s;
    req.SerializeToString( &s );
-   auto future = _rpc_client->rpc( service::chain, s );
+   auto future = _rpc_client->rpc( util::service::chain, s );
 
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
@@ -264,7 +265,7 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
 
 bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
 {
-   if ( converter::to< uint256_t >( hash.digest() ) <= target )
+   if ( util::converter::to< uint256_t >( hash.digest() ) <= target )
       return true;
 
    return false;
@@ -311,7 +312,7 @@ std::string pow_producer::hashrate_to_string( double hashrate )
 
 std::string pow_producer::compute_network_hashrate( const contracts::pow::difficulty_metadata& meta )
 {
-   auto hashrate = converter::to< uint256_t >( meta.difficulty() ) / meta.target_block_interval();
+   auto hashrate = util::converter::to< uint256_t >( meta.difficulty() ) / meta.target_block_interval();
    return hashrate_to_string( double( hashrate ) );
 }
 
