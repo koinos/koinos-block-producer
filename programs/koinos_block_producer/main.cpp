@@ -295,6 +295,7 @@ int main( int argc, char** argv )
          production_context.stop();
          main_context.stop();
          reqhandler.stop();
+         client->disconnect();
       } );
 
       std::vector< std::thread > threads;
