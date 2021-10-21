@@ -158,7 +158,7 @@ int main( int argc, char** argv )
       std::string private_key_wif( ( std::istreambuf_iterator< char >( ifs ) ), ( std::istreambuf_iterator< char >() ) );
       crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
 
-      LOG(info) << "Public address: " << util::encode_base58( util::converter::as< std::vector< std::byte > >( signing_key.get_public_key().to_address_bytes() ) );
+      LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
@@ -215,8 +215,7 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
-         std::vector< std::byte > pow_address;
-         util::decode_base58( pow_id, pow_address );
+         auto pow_address = util::from_base58< std::string >( pow_id );
 
          producer = std::make_unique< block_production::pow_producer >(
             signing_key,
@@ -227,7 +226,7 @@ int main( int argc, char** argv )
             rcs_lbound,
             rcs_ubound,
             max_attempts,
-            util::converter::as< std::string >( pow_address ),
+            pow_address,
             work_groups
          );
 
