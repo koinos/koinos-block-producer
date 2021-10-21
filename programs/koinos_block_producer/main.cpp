@@ -52,8 +52,6 @@
 using namespace boost;
 using namespace koinos;
 
-using work_guard_type = boost::asio::executor_work_guard< boost::asio::io_context::executor_type >;
-
 int main( int argc, char** argv )
 {
    try
@@ -197,7 +195,7 @@ int main( int argc, char** argv )
          LOG(info) << "Established connection to mempool";
       }
 
-      boost::asio::io_context production_context, main_context;
+      boost::asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;
 
       if ( algorithm == FEDERATED_ALGORITHM )
@@ -206,7 +204,7 @@ int main( int argc, char** argv )
          producer = std::make_unique< block_production::federated_producer >(
             signing_key,
             main_context,
-            production_context,
+            work_context,
             client,
             production_threshold,
             rcs_lbound,
@@ -223,7 +221,7 @@ int main( int argc, char** argv )
          producer = std::make_unique< block_production::pow_producer >(
             signing_key,
             main_context,
-            production_context,
+            work_context,
             client,
             production_threshold,
             rcs_lbound,
@@ -241,9 +239,9 @@ int main( int argc, char** argv )
          exit( EXIT_FAILURE );
       }
 
-      mq::request_handler reqhandler;
+      mq::request_handler reqhandler( work_context );
 
-      auto ec = reqhandler.add_broadcast_handler(
+      reqhandler.add_broadcast_handler(
          "koinos.block.accept",
          [&]( const std::string& msg )
          {
@@ -264,43 +262,26 @@ int main( int argc, char** argv )
          }
       );
 
-      if ( ec != mq::error_code::success )
-      {
-         LOG(error) << "Unable to register block broadcast handler";
-         exit( EXIT_FAILURE );
-      }
-
       LOG(info) << "Connecting AMQP request handler...";
-      ec = reqhandler.connect( amqp_url );
-      if ( ec != mq::error_code::success )
-      {
-         LOG(info) << "Unable to connect to AMQP request handler" ;
-         exit( EXIT_FAILURE );
-      }
+      reqhandler.connect( amqp_url );
       LOG(info) << "Connected client to AMQP server";
-
-      reqhandler.start();
 
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
-
-      work_guard_type production_work_guard( production_context.get_executor() );
-      work_guard_type main_work_guard( main_context.get_executor() );
 
       boost::asio::signal_set signals( main_context, SIGINT, SIGTERM );
 
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
          LOG(info) << "Caught signal, shutting down...";
-         production_context.stop();
+         work_context.stop();
          main_context.stop();
-         reqhandler.stop();
          client->disconnect();
       } );
 
       std::vector< std::thread > threads;
       for ( std::size_t i = 0; i < jobs + 1; i++ )
-         threads.emplace_back( [&]() { production_context.run(); } );
+         threads.emplace_back( [&]() { work_context.run(); } );
 
       main_context.run();
 
@@ -309,15 +290,15 @@ int main( int argc, char** argv )
    }
    catch ( const std::exception& e )
    {
-      LOG(fatal) << e.what() << std::endl;
+      LOG(fatal) << e.what();
    }
    catch ( const boost::exception& e )
    {
-      LOG(fatal) << boost::diagnostic_information( e ) << std::endl;
+      LOG(fatal) << boost::diagnostic_information( e );
    }
    catch ( ... )
    {
-      LOG(fatal) << "Unknown exception" << std::endl;
+      LOG(fatal) << "Unknown exception";
    }
 
    return EXIT_FAILURE;
