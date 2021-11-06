@@ -154,9 +154,20 @@ int main( int argc, char** argv )
          "unable to find private key file at: ${loc}", ("loc", private_key_file.string())
       );
 
-      std::ifstream ifs( private_key_file );
-      std::string private_key_wif( ( std::istreambuf_iterator< char >( ifs ) ), ( std::istreambuf_iterator< char >() ) );
-      crypto::private_key signing_key = crypto::private_key::from_wif( private_key_wif );
+      crypto::private_key signing_key;
+
+      try
+      {
+         std::ifstream ifs( private_key_file );
+         std::string private_key_wif;
+         std::getline( ifs, private_key_wif );
+         signing_key = crypto::private_key::from_wif( private_key_wif );
+      }
+      catch( const std::exception& e )
+      {
+         LOG(error) << "Unable to parse the private key file at " << private_key_file << ", please ensure it exists and is correctly formatted";
+         throw;
+      }
 
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
@@ -295,7 +306,7 @@ int main( int argc, char** argv )
    }
    catch ( const std::exception& e )
    {
-      LOG(fatal) << e.what();
+      LOG(fatal) << "Error: " << e.what();
    }
    catch ( const boost::exception& e )
    {
