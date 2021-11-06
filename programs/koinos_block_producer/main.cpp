@@ -163,7 +163,7 @@ int main( int argc, char** argv )
          std::getline( ifs, private_key_wif );
          signing_key = crypto::private_key::from_wif( private_key_wif );
       }
-      catch( const std::exception& e )
+      catch ( const std::exception& e )
       {
          LOG(error) << "Unable to parse the private key file at " << private_key_file << ", please ensure it exists and is correctly formatted";
          throw;
