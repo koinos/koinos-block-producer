@@ -49,6 +49,9 @@
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 100 )
 
+KOINOS_DECLARE_EXCEPTION( block_producer_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, block_producer_exception );
+
 using namespace boost;
 using namespace koinos;
 
@@ -78,14 +81,14 @@ int main( int argc, char** argv )
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
 
-      if( args.count( HELP_OPTION ) )
+      if ( args.count( HELP_OPTION ) )
       {
          std::cout << options << std::endl;
          return EXIT_SUCCESS;
       }
 
       auto basedir = std::filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
-      if( basedir.is_relative() )
+      if ( basedir.is_relative() )
          basedir = std::filesystem::current_path() / basedir;
 
       YAML::Node config;
@@ -127,17 +130,17 @@ int main( int argc, char** argv )
 
       initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
 
-      KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, koinos::exception, "resource lower bound out of range [0..100]" );
-      KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, koinos::exception, "resource upper bound out of range [0..100]" );
+      KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
+      KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
 
       KOINOS_ASSERT(
          production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
-         koinos::exception,
+         invalid_argument,
          "stale block production threshold would overflow, maximum value: ${v}",
          ("v", std::numeric_limits< int64_t >::max() / 1000)
       );
 
-      KOINOS_ASSERT( jobs > 0, koinos::exception, "jobs must be greater than 0" );
+      KOINOS_ASSERT( jobs > 0, invalid_argument, "jobs must be greater than 0" );
 
       if ( config.IsNull() )
       {
@@ -150,8 +153,8 @@ int main( int argc, char** argv )
 
       KOINOS_ASSERT(
          std::filesystem::exists( private_key_file ),
-         koinos::exception,
-         "unable to find private key file at: ${loc}", ("loc", private_key_file.string())
+         invalid_argument,
+         "unable to find private key file at: ${loc}", ("loc", private_key_file)
       );
 
       crypto::private_key signing_key;
@@ -165,8 +168,7 @@ int main( int argc, char** argv )
       }
       catch ( const std::exception& e )
       {
-         LOG(error) << "Unable to parse the private key file at " << private_key_file << ", please ensure it exists and is correctly formatted";
-         throw;
+         KOINOS_THROW( invalid_argument, "unable to parse private key file at ${f}, ${r}", ("f", private_key_file)("r", e.what()) );
       }
 
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
@@ -175,38 +177,23 @@ int main( int argc, char** argv )
 
       auto client = std::make_shared< mq::client >();
 
-      try {
-         LOG(info) << "Connecting AMQP client...";
-         client->connect( amqp_url );
-         LOG(info) << "Established AMQP client connection to the server";
-      }
-      catch ( std::exception& e )
-      {
-         LOG(error) << "Failed to connect AMQP client to server, " << e.what();
-         exit( EXIT_FAILURE );
-      }
+      LOG(info) << "Connecting AMQP client...";
+      client->connect( amqp_url );
+      LOG(info) << "Established AMQP client connection to the server";
 
-      {
-         LOG(info) << "Attempting to connect to chain...";
-         rpc::chain::chain_request req;
-         req.mutable_reserved();
-         std::string s;
-         req.SerializeToString( &s );
-         client->rpc( util::service::chain, s ).get();
-         LOG(info) << "Established connection to chain";
-      }
+      LOG(info) << "Attempting to connect to chain...";
+      rpc::chain::chain_request creq;
+      creq.mutable_reserved();
+      client->rpc( util::service::chain, creq.SerializeAsString() ).get();
+      LOG(info) << "Established connection to chain";
 
-      {
-         LOG(info) << "Attempting to connect to mempool...";
-         rpc::mempool::mempool_request req;
-         req.mutable_reserved();
-         std::string s;
-         req.SerializeToString( &s );
-         client->rpc( util::service::mempool, s ).get();
-         LOG(info) << "Established connection to mempool";
-      }
+      LOG(info) << "Attempting to connect to mempool...";
+      rpc::mempool::mempool_request mreq;
+      mreq.mutable_reserved();
+      client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
+      LOG(info) << "Established connection to mempool";
 
-      boost::asio::io_context work_context, main_context;
+      asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;
 
       if ( algorithm == FEDERATED_ALGORITHM )
@@ -245,8 +232,7 @@ int main( int argc, char** argv )
       }
       else
       {
-         LOG(error) << "Unrecognized consensus algorithm";
-         exit( EXIT_FAILURE );
+         KOINOS_THROW( invalid_argument, "unrecognized consensus algorithm" );
       }
 
       mq::request_handler reqhandler( work_context );
@@ -261,11 +247,11 @@ int main( int argc, char** argv )
                bam.ParseFromString( msg );
                producer->on_block_accept( bam.block() );
             }
-            catch( const boost::exception& e )
+            catch ( const boost::exception& e )
             {
                LOG(warning) << "Error handling block broadcast: " << boost::diagnostic_information( e );
             }
-            catch( const std::exception& e )
+            catch ( const std::exception& e )
             {
                LOG(warning) << "Error handling block broadcast: " << e.what();
             }
@@ -279,12 +265,12 @@ int main( int argc, char** argv )
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
 
-      boost::asio::signal_set signals( main_context, SIGINT, SIGTERM );
+      asio::signal_set signals( main_context, SIGINT, SIGTERM );
 
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
          LOG(info) << "Caught signal, shutting down...";
-         boost::asio::post(
+         asio::post(
             main_context,
             [&]()
             {
@@ -303,18 +289,24 @@ int main( int argc, char** argv )
 
       for ( auto& t : threads )
          t.join();
+
+      return EXIT_SUCCESS;
+   }
+   catch ( const invalid_argument& e )
+   {
+      LOG(fatal) << "Invalid argument: " << e.what();
    }
    catch ( const std::exception& e )
    {
-      LOG(fatal) << "Error: " << e.what();
+      LOG(fatal) << "An unexpected error has occurred: " << e.what();
    }
    catch ( const boost::exception& e )
    {
-      LOG(fatal) << boost::diagnostic_information( e );
+      LOG(fatal) << "An unexpected error has occurred: " << boost::diagnostic_information( e );
    }
    catch ( ... )
    {
-      LOG(fatal) << "Unknown exception";
+      LOG(fatal) << "An unexpected error has occurred";
    }
 
    return EXIT_FAILURE;
