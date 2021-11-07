@@ -49,8 +49,8 @@
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 100 )
 
-KOINOS_DECLARE_EXCEPTION( block_producer_exception );
-KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, block_producer_exception );
+KOINOS_DECLARE_EXCEPTION( service_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 
 using namespace boost;
 using namespace koinos;
@@ -294,7 +294,7 @@ int main( int argc, char** argv )
    }
    catch ( const invalid_argument& e )
    {
-      LOG(fatal) << "Invalid argument: " << e.what();
+      LOG(error) << "Invalid argument: " << e.what();
    }
    catch ( const std::exception& e )
    {
