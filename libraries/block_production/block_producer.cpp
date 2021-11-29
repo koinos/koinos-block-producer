@@ -75,9 +75,19 @@ protocol::block block_producer::next_block()
    KOINOS_ASSERT( resp.has_get_head_info(), rpc_failure, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
    const auto& head_info = resp.get_head_info();
 
-   b.mutable_header()->set_previous( resp.get_head_info().head_topology().id() );
-   b.mutable_header()->set_height( resp.get_head_info().head_topology().height() + 1 );
+   b.mutable_header()->set_previous( head_info.head_topology().id() );
+   b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
    b.mutable_header()->set_timestamp( now() );
+
+   fill_block( b );
+
+   protocol::active_block_data active;
+   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
+   active.set_previous_state_merkle_root( head_info.head_state_merkle_root() );
+
+   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
+
+   b.set_active( util::converter::as< std::string >( active ) );
 
    return b;
 }
@@ -175,13 +185,6 @@ void block_producer::fill_block( protocol::block& b )
              << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
              << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
-
-   protocol::active_block_data active;
-   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
-
-   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
-
-   b.set_active( util::converter::as< std::string >( active ) );
 }
 
 void block_producer::submit_block( protocol::block& b )

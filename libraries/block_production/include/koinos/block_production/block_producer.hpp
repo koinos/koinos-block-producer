@@ -36,7 +36,6 @@ public:
 
 protected:
    protocol::block next_block();
-   void fill_block( protocol::block& b );
    void submit_block( protocol::block& b );
 
    virtual void commence() = 0;
@@ -55,6 +54,7 @@ protected:
 
 private:
    void on_run( const boost::system::error_code& ec );
+   void fill_block( protocol::block& b );
    void set_merkle_roots( const protocol::block&, protocol::active_block_data&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
    uint64_t now();
 };
