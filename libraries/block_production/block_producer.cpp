@@ -78,12 +78,12 @@ protocol::block block_producer::next_block()
    b.mutable_header()->set_previous( head_info.head_topology().id() );
    b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
    b.mutable_header()->set_timestamp( now() );
+   b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
 
    fill_block( b );
 
    protocol::active_block_data active;
    active.set_signer( _signing_key.get_public_key().to_address_bytes() );
-   active.set_previous_state_merkle_root( head_info.head_state_merkle_root() );
 
    set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
 
