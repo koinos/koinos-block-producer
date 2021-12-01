@@ -271,6 +271,7 @@ void block_producer::on_block_accept( const protocol::block& b )
 
    if ( b.header().timestamp() > last_block_time )
    {
+      KOINOS_ASSERT( b.header().timestamp() <= std::numeric_limits< int64_t >::max(), timestamp_overflow, "timestamp would overflow signed 64-bit integer" );
       last_block_time = b.header().timestamp();
       _last_block_time = last_block_time;
    }

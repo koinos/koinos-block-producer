@@ -16,6 +16,7 @@ namespace koinos::block_production {
 
 KOINOS_DECLARE_EXCEPTION( block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( rpc_failure, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( timestamp_overflow, block_production_exception );
 
 class block_producer
 {
