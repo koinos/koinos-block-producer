@@ -16,6 +16,7 @@ namespace koinos::block_production {
 
 KOINOS_DECLARE_EXCEPTION( block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( rpc_failure, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( timestamp_overflow, block_production_exception );
 
 class block_producer
 {
@@ -45,7 +46,7 @@ protected:
    boost::asio::io_context&         _production_context;
    std::shared_ptr< mq::client >    _rpc_client;
    const crypto::private_key        _signing_key;
-   std::atomic< uint64_t >          _last_block_time = 0;
+   std::atomic< int64_t >           _last_block_time = 0;
    std::atomic< bool >              _halted = true;
    const int64_t                    _production_threshold;
    const uint64_t                   _resources_lower_bound;

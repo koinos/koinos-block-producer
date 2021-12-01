@@ -237,8 +237,14 @@ uint64_t block_producer::now()
 
 void block_producer::on_block_accept( const protocol::block& b )
 {
-   if ( b.header().timestamp() > _last_block_time )
-      _last_block_time = b.header().timestamp();
+   auto last_block_time = _last_block_time.load();
+
+   if ( b.header().timestamp() > last_block_time )
+   {
+      KOINOS_ASSERT( b.header().timestamp() <= std::numeric_limits< int64_t >::max(), timestamp_overflow, "timestamp would overflow signed 64-bit integer" );
+      last_block_time = b.header().timestamp();
+      _last_block_time = last_block_time;
+   }
 
    if ( _production_threshold >= 0 )
    {
@@ -247,7 +253,7 @@ void block_producer::on_block_accept( const protocol::block& b )
       ).count();
 
       auto threshold_ms = _production_threshold * 1000;
-      auto time_delta   = now - _last_block_time.load();
+      auto time_delta   = now - last_block_time ;
 
       if ( time_delta <= threshold_ms )
       {
