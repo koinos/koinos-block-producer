@@ -75,9 +75,19 @@ protocol::block block_producer::next_block()
    KOINOS_ASSERT( resp.has_get_head_info(), rpc_failure, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
    const auto& head_info = resp.get_head_info();
 
-   b.mutable_header()->set_previous( resp.get_head_info().head_topology().id() );
-   b.mutable_header()->set_height( resp.get_head_info().head_topology().height() + 1 );
+   b.mutable_header()->set_previous( head_info.head_topology().id() );
+   b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
    b.mutable_header()->set_timestamp( now() );
+   b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
+
+   fill_block( b );
+
+   protocol::active_block_data active;
+   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
+
+   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
+
+   b.set_active( util::converter::as< std::string >( active ) );
 
    return b;
 }
@@ -175,15 +185,6 @@ void block_producer::fill_block( protocol::block& b )
              << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
              << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
-
-   protocol::active_block_data active;
-   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
-
-   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
-
-   protocol::passive_block_data passive;
-   b.set_active( util::converter::as< std::string >( active ) );
-   b.set_passive( util::converter::as< std::string >( passive ) );
 }
 
 void block_producer::submit_block( protocol::block& b )
@@ -191,9 +192,6 @@ void block_producer::submit_block( protocol::block& b )
    rpc::chain::chain_request req;
    auto block_req = req.mutable_submit_block();
    block_req->mutable_block()->CopyFrom( b );
-   block_req->set_verify_passive_data( true );
-   block_req->set_verify_block_signature( true );
-   block_req->set_verify_transaction_signature( true );
 
    auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ) );
 
@@ -211,47 +209,19 @@ void block_producer::submit_block( protocol::block& b )
    LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() );
 }
 
-//
-// +-----------+      +--------------+      +-------------------------+      +---------------------+
-// | Block sig | ---> | Block active | ---> | Transaction merkle root | ---> | Transaction actives |
-// +-----------+      +--------------+      +-------------------------+      +---------------------+
-//                           |
-//                           V
-//                +----------------------+      +----------------------+
-//                |                      | ---> |     Block passive    |
-//                |                      |      +----------------------+
-//                |                      |
-//                |                      |      +----------------------+
-//                | Passives merkle root | ---> | Transaction passives |
-//                |                      |      +----------------------+
-//                |                      |
-//                |                      |      +----------------------+
-//                |                      | ---> |   Transaction sigs   |
-//                +----------------------+      +----------------------+
-//
-
 void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, crypto::digest_size size )
 {
    std::vector< crypto::multihash > transactions;
-   std::vector< crypto::multihash > passives;
    transactions.reserve( block.transactions().size() );
-   passives.reserve( 2 * ( block.transactions().size() + 1 ) );
-
-   passives.emplace_back( crypto::hash( code, block.passive(), size ) );
-   passives.emplace_back( crypto::multihash::empty( code ) );
 
    for ( const auto& trx : block.transactions() )
    {
-      passives.emplace_back( crypto::hash( code, trx.passive(), size ) );
-      passives.emplace_back( crypto::hash( code, trx.signature_data(), size ) );
       transactions.emplace_back( crypto::hash( code, trx.active(), size ) );
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
-   auto passives_merkle_tree = crypto::merkle_tree( code, passives );
 
    active_data.set_transaction_merkle_root( util::converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
-   active_data.set_passive_data_merkle_root( util::converter::as< std::string >( passives_merkle_tree.root()->hash() ) );
 }
 
 uint64_t block_producer::now()
