@@ -103,77 +103,81 @@ void pow_producer::produce( const boost::system::error_code& ec )
    try
    {
       auto block = next_block();
-      auto diff_meta = get_difficulty_meta();
-      auto target = util::converter::to< uint256_t >( diff_meta.target() );
 
-      block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header() ) ) );
-
-      LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
-      LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
-
-      for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
+      do
       {
-         const auto& [ start, end ] = _worker_groups.at( worker_index );
-         boost::asio::post(
-            _production_context,
-            std::bind(
-               &pow_producer::find_nonce,
-               this,
-               worker_index++,
-               block,
-               target,
-               start,
-               end,
-               nonce,
-               done
-            )
-         );
-      }
+         auto diff_meta = get_difficulty_meta();
+         auto target = util::converter::to< uint256_t >( diff_meta.target() );
 
-      {
-         auto lock = std::unique_lock< std::mutex >( _cv_mutex );
+         block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header() ) ) );
 
-         bool service_was_halted = false;
-         bool block_is_stale     = false;
+         LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
+         LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
 
-         _hashing = true;
-
-         while ( !_cv.wait_for( lock, 1s, [&]()
+         for ( std::size_t worker_index = 0; worker_index < _worker_groups.size(); worker_index++ )
          {
-            service_was_halted = _production_context.stopped() || _halted;
-            block_is_stale     = _last_known_height >= block.header().height();
-
-            return *done || service_was_halted || block_is_stale;
-         } ) );
-
-         _hashing = false;
-
-         if ( service_was_halted )
-            return;
-
-         if ( block_is_stale )
-         {
-            LOG(info) << "Block is stale, retrieving new head";
-            *done = true;
-            boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
-            return;
+            const auto& [ start, end ] = _worker_groups.at( worker_index );
+            boost::asio::post(
+               _production_context,
+               std::bind(
+                  &pow_producer::find_nonce,
+                  this,
+                  worker_index++,
+                  block,
+                  target,
+                  start,
+                  end,
+                  nonce,
+                  done
+               )
+            );
          }
+
+         {
+            auto lock = std::unique_lock< std::mutex >( _cv_mutex );
+
+            bool service_was_halted = false;
+            bool block_is_stale     = false;
+
+            _hashing = true;
+
+            while ( !_cv.wait_for( lock, 1s, [&]()
+            {
+               service_was_halted = _production_context.stopped() || _halted;
+               block_is_stale     = _last_known_height >= block.header().height();
+
+               return *done || service_was_halted || block_is_stale;
+            } ) );
+
+            _hashing = false;
+
+            if ( service_was_halted )
+               return;
+
+            if ( block_is_stale )
+            {
+               LOG(info) << "Block is stale, retrieving new head";
+               *done = true;
+               boost::asio::post( _production_context, std::bind( &pow_producer::produce, this, boost::system::error_code{} ) );
+               return;
+            }
+         }
+
+         KOINOS_ASSERT( nonce->has_value(), nonce_failure, "expected nonce to contain a value" );
+
+         auto block_nonce = nonce->value();
+
+         LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
+         LOG(info) << "Proof: " << crypto::hash( crypto::multicodec::sha2_256, block_nonce, block.id() );
+
+         contracts::pow::pow_signature_data pow_data;
+         pow_data.set_nonce( util::converter::as< std::string >( block_nonce ) );
+         pow_data.set_recoverable_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( block.id() ) ) ) );
+
+         block.set_signature( util::converter::as< std::string >( pow_data ) );
       }
+      while( submit_block( block ) );
 
-      KOINOS_ASSERT( nonce->has_value(), nonce_failure, "expected nonce to contain a value" );
-
-      auto block_nonce = nonce->value();
-
-      LOG(info) << "Found nonce: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << block_nonce;
-      LOG(info) << "Proof: " << crypto::hash( crypto::multicodec::sha2_256, block_nonce, block.id() );
-
-      contracts::pow::pow_signature_data pow_data;
-      pow_data.set_nonce( util::converter::as< std::string >( block_nonce ) );
-      pow_data.set_recoverable_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( block.id() ) ) ) );
-
-      block.set_signature( util::converter::as< std::string >( pow_data ) );
-
-      submit_block( block );
       _error_wait_time = 5s;
    }
    catch ( const std::exception& e )
