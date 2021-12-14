@@ -17,6 +17,7 @@ namespace koinos::block_production {
 KOINOS_DECLARE_EXCEPTION( block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( rpc_failure, block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( timestamp_overflow, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( nonce_failure, block_production_exception );
 
 class block_producer
 {
@@ -56,7 +57,7 @@ protected:
 private:
    void on_run( const boost::system::error_code& ec );
    void fill_block( protocol::block& b );
-   void set_merkle_roots( const protocol::block&, protocol::active_block_data&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
+   void set_merkle_roots( protocol::block&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
    uint64_t now();
 };
 

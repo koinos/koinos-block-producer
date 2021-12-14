@@ -79,15 +79,11 @@ protocol::block block_producer::next_block()
    b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
    b.mutable_header()->set_timestamp( now() );
    b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
+   b.mutable_header()->set_signer( _signing_key.get_public_key().to_address_bytes() );
 
    fill_block( b );
 
-   protocol::active_block_data active;
-   active.set_signer( _signing_key.get_public_key().to_address_bytes() );
-
-   set_merkle_roots( b, active, crypto::multicodec::sha2_256 );
-
-   b.set_active( util::converter::as< std::string >( active ) );
+   set_merkle_roots( b, crypto::multicodec::sha2_256 );
 
    return b;
 }
@@ -156,28 +152,23 @@ void block_producer::fill_block( protocol::block& b )
       const auto& ptransaction = pending_transactions.pending_transactions( ptransaction_index );
       const auto& transaction = ptransaction.transaction();
 
-      protocol::active_transaction_data active;
+      if ( transaction.header().rc_limit() == 0 )
+         continue;
 
-      if ( active.ParseFromString( transaction.active() ) )
+      auto new_disk_storage_count      = ptransaction.disk_storage_used() + disk_storage_count;
+      auto new_network_bandwidth_count = ptransaction.network_bandwidth_used() + network_bandwidth_count;
+      auto new_compute_bandwidth_count = ptransaction.compute_bandwidth_used() + compute_bandwidth_count;
+
+      bool disk_storage_within_bounds      = new_disk_storage_count      <= block_resource_limits.disk_storage_limit()      * _resources_upper_bound / 100;
+      bool network_bandwidth_within_bounds = new_network_bandwidth_count <= block_resource_limits.network_bandwidth_limit() * _resources_upper_bound / 100;
+      bool compute_bandwidth_within_bounds = new_compute_bandwidth_count <= block_resource_limits.compute_bandwidth_limit() * _resources_upper_bound / 100;
+
+      if ( disk_storage_within_bounds && network_bandwidth_within_bounds && compute_bandwidth_within_bounds )
       {
-         if ( active.rc_limit() == 0 )
-            continue;
-
-         auto new_disk_storage_count      = ptransaction.disk_storage_used() + disk_storage_count;
-         auto new_network_bandwidth_count = ptransaction.network_bandwidth_used() + network_bandwidth_count;
-         auto new_compute_bandwidth_count = ptransaction.compute_bandwidth_used() + compute_bandwidth_count;
-
-         bool disk_storage_within_bounds      = new_disk_storage_count      <= block_resource_limits.disk_storage_limit()      * _resources_upper_bound / 100;
-         bool network_bandwidth_within_bounds = new_network_bandwidth_count <= block_resource_limits.network_bandwidth_limit() * _resources_upper_bound / 100;
-         bool compute_bandwidth_within_bounds = new_compute_bandwidth_count <= block_resource_limits.compute_bandwidth_limit() * _resources_upper_bound / 100;
-
-         if ( disk_storage_within_bounds && network_bandwidth_within_bounds && compute_bandwidth_within_bounds )
-         {
-            *b.add_transactions()   = transaction;
-            disk_storage_count      = new_disk_storage_count;
-            network_bandwidth_count = new_network_bandwidth_count;
-            compute_bandwidth_count = new_compute_bandwidth_count;
-         }
+         *b.add_transactions()   = transaction;
+         disk_storage_count      = new_disk_storage_count;
+         network_bandwidth_count = new_network_bandwidth_count;
+         compute_bandwidth_count = new_compute_bandwidth_count;
       }
    }
 
@@ -209,19 +200,19 @@ void block_producer::submit_block( protocol::block& b )
    LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() );
 }
 
-void block_producer::set_merkle_roots( const protocol::block& block, protocol::active_block_data& active_data, crypto::multicodec code, crypto::digest_size size )
+void block_producer::set_merkle_roots( protocol::block& block, crypto::multicodec code, crypto::digest_size size )
 {
    std::vector< crypto::multihash > transactions;
    transactions.reserve( block.transactions().size() );
 
    for ( const auto& trx : block.transactions() )
    {
-      transactions.emplace_back( crypto::hash( code, trx.active(), size ) );
+      transactions.emplace_back( crypto::hash( code, trx.header(), size ) );
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
 
-   active_data.set_transaction_merkle_root( util::converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
+   block.mutable_header()->set_transaction_merkle_root( util::converter::as< std::string >( transaction_merkle_tree.root()->hash() ) );
 }
 
 uint64_t block_producer::now()

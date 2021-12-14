@@ -106,7 +106,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       auto diff_meta = get_difficulty_meta();
       auto target = util::converter::to< uint256_t >( diff_meta.target() );
 
-      block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header(), block.active() ) ) );
+      block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header() ) ) );
 
       LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
       LOG(info) << "Network hashrate: " << compute_network_hashrate( diff_meta );
@@ -160,7 +160,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
          }
       }
 
-      KOINOS_ASSERT( nonce->has_value(), koinos::exception, "expected nonce to contain a value" );
+      KOINOS_ASSERT( nonce->has_value(), nonce_failure, "expected nonce to contain a value" );
 
       auto block_nonce = nonce->value();
 
@@ -171,7 +171,7 @@ void pow_producer::produce( const boost::system::error_code& ec )
       pow_data.set_nonce( util::converter::as< std::string >( block_nonce ) );
       pow_data.set_recoverable_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( block.id() ) ) ) );
 
-      block.set_signature_data( util::converter::as< std::string >( pow_data ) );
+      block.set_signature( util::converter::as< std::string >( pow_data ) );
 
       submit_block( block );
       _error_wait_time = 5s;
@@ -243,19 +243,17 @@ contracts::pow::difficulty_metadata pow_producer::get_difficulty_meta()
    read_contract->set_contract_id( _pow_contract_id );
    read_contract->set_entry_point( get_difficulty_entrypoint );
 
-   std::string s;
-   req.SerializeToString( &s );
-   auto future = _rpc_client->rpc( util::service::chain, s );
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
 
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
 
    if ( resp.has_error() )
    {
-      KOINOS_THROW( koinos::exception, "error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
+      KOINOS_THROW( rpc_failure, "error while retrieving difficulty from the pow contract: ${e}", ("e", resp.error().message()) );
    }
 
-   KOINOS_ASSERT( resp.has_read_contract(), koinos::exception, "unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
+   KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when retrieving difficulty: ${r}", ("r", resp) );
 
    contracts::pow::get_difficulty_metadata_result meta;
    meta.ParseFromString( resp.read_contract().result() );
