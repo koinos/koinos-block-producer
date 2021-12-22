@@ -46,11 +46,15 @@ void federated_producer::produce( const boost::system::error_code& ec )
    try
    {
       auto block = next_block();
-      auto id = crypto::hash( crypto::multicodec::sha2_256, block.header() );
-      block.set_id( util::converter::as< std::string >( id ) );
-      auto block_signature = std::string( (const char*)_signing_key.sign_compact( id ).data(), sizeof( crypto::recoverable_signature ) );
-      block.set_signature( block_signature );
-      submit_block( block );
+
+      do
+      {
+         auto id = crypto::hash( crypto::multicodec::sha2_256, block.header() );
+         block.set_id( util::converter::as< std::string >( id ) );
+         auto block_signature = std::string( (const char*)_signing_key.sign_compact( id ).data(), sizeof( crypto::recoverable_signature ) );
+         block.set_signature( block_signature );
+      }
+      while ( submit_block( block ) );
    }
    catch ( const std::exception& e )
    {

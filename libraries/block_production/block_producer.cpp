@@ -8,6 +8,7 @@
 #include <koinos/rpc/chain/chain_rpc.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util/conversion.hpp>
+#include <koinos/util/hex.hpp>
 #include <koinos/util/services.hpp>
 
 namespace koinos::block_production {
@@ -178,7 +179,21 @@ void block_producer::fill_block( protocol::block& b )
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
 }
 
-void block_producer::submit_block( protocol::block& b )
+void block_producer::trim_block( protocol::block& b, const std::string& trx_id )
+{
+   auto trxs = b.mutable_transactions();
+
+   for ( size_t i = 0; i < trxs->size(); i++ )
+   {
+      if ( trxs->at( i ).id() == trx_id )
+      {
+         trxs->DeleteSubrange( i, trxs->size() );
+         return;
+      }
+   }
+}
+
+bool block_producer::submit_block( protocol::block& b )
 {
    rpc::chain::chain_request req;
    auto block_req = req.mutable_submit_block();
@@ -191,13 +206,36 @@ void block_producer::submit_block( protocol::block& b )
 
    if ( resp.has_error() )
    {
+      if ( resp.error().data().length() > 0 )
+      {
+         try
+         {
+            auto data = nlohmann::json::parse( resp.error().data() );
+            if ( data.find( "transaction_id" ) != data.end() )
+            {
+               const auto& trx_id = data[ "transaction_id" ];
+               LOG(warning) << "Error on applying transaction " << trx_id << ": " << resp.error().message();
+
+               trim_block( b, util::from_hex< std::string >( trx_id ) );
+               set_merkle_roots( b, crypto::multicodec::sha2_256 );
+
+               return true;
+            }
+         }
+         catch ( const std::exception& e )
+         {
+            LOG(warning) << "Unable to trim block, " << e.what();
+         }
+      }
+
       LOG(warning) << "Error while submitting block: " << resp.error().message();
-      return;
+      return false;
    }
 
    KOINOS_ASSERT( resp.has_submit_block(), rpc_failure, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
    LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() );
+   return false;
 }
 
 void block_producer::set_merkle_roots( protocol::block& block, crypto::multicodec code, crypto::digest_size size )

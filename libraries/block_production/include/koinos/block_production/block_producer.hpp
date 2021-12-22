@@ -38,7 +38,9 @@ public:
 
 protected:
    protocol::block next_block();
-   void submit_block( protocol::block& b );
+
+   // Submits a block, returns true if block needs to be resubmitted
+   bool submit_block( protocol::block& b );
 
    virtual void commence() = 0;
    virtual void halt()     = 0;
@@ -57,6 +59,7 @@ protected:
 private:
    void on_run( const boost::system::error_code& ec );
    void fill_block( protocol::block& b );
+   void trim_block( protocol::block& b, const std::string& trx_id );
    void set_merkle_roots( protocol::block&, crypto::multicodec code, crypto::digest_size size = crypto::digest_size( 0 ) );
    uint64_t now();
 };
