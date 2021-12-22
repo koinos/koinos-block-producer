@@ -206,16 +206,26 @@ bool block_producer::submit_block( protocol::block& b )
 
    if ( resp.has_error() )
    {
-      auto data = nlohmann::json::parse( resp.error().data() );
-      if ( data.find( "transaction_id" ) != data.end() )
+      if ( resp.error().data().length() > 0 )
       {
-         const auto& trx_id = data[ "transaction_id" ];
-         LOG(warning) << "Error on applying transaction " << trx_id << ": " << resp.error().message();
+         try
+         {
+            auto data = nlohmann::json::parse( resp.error().data() );
+            if ( data.find( "transaction_id" ) != data.end() )
+            {
+               const auto& trx_id = data[ "transaction_id" ];
+               LOG(warning) << "Error on applying transaction " << trx_id << ": " << resp.error().message();
 
-         trim_block( b, util::from_hex< std::string >( trx_id ) );
-         set_merkle_roots( b, crypto::multicodec::sha2_256 );
+               trim_block( b, util::from_hex< std::string >( trx_id ) );
+               set_merkle_roots( b, crypto::multicodec::sha2_256 );
 
-         return true;
+               return true;
+            }
+         }
+         catch ( const std::exception& e )
+         {
+            LOG(warning) << "Unable to trim block, " << e.what();
+         }
       }
 
       LOG(warning) << "Error while submitting block: " << resp.error().message();
@@ -231,11 +241,12 @@ bool block_producer::submit_block( protocol::block& b )
 void block_producer::set_merkle_roots( protocol::block& block, crypto::multicodec code, crypto::digest_size size )
 {
    std::vector< crypto::multihash > transactions;
-   transactions.reserve( block.transactions().size() );
+   transactions.reserve( block.transactions().size() * 2 );
 
    for ( const auto& trx : block.transactions() )
    {
       transactions.emplace_back( crypto::hash( code, trx.header(), size ) );
+      transactions.emplace_back( crypto::hash( code, trx.signature(), size ) );
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, transactions );
