@@ -246,7 +246,12 @@ void block_producer::set_merkle_roots( protocol::block& block, crypto::multicode
    for ( const auto& trx : block.transactions() )
    {
       hashes.emplace_back( crypto::hash( code, trx.header(), size ) );
-      hashes.emplace_back( crypto::hash( code, trx.signature(), size ) );
+
+      for ( const auto& signature : trx.signatures() )
+      {
+         hashes.emplace_back( crypto::hash( code, signature, size ) );
+      }
+      
    }
 
    auto transaction_merkle_tree = crypto::merkle_tree( code, hashes );
