@@ -43,7 +43,6 @@
 #define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
 #define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
-#define GOSSIP_PRODUCTION_DEFAULT          bool( false )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
 #define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
 #define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
@@ -196,7 +195,7 @@ int main( int argc, char** argv )
       client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
       LOG(info) << "Established connection to mempool";
 
-      bool gossip_production = args.count( HELP_OPTION );
+      bool gossip_production = args.count( GOSSIP_PRODUCTION_OPTION );
 
       asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;

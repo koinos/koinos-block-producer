@@ -53,6 +53,7 @@ void block_producer::on_run( const boost::system::error_code& ec )
       LOG(info) << "Checking p2p gossip status";
 
       rpc::p2p::p2p_request req;
+      req.mutable_get_gossip_status();
 
       auto future = _rpc_client->rpc( util::service::p2p, util::converter::as< std::string >( req ) );
 
