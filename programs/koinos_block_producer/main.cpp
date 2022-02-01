@@ -229,9 +229,9 @@ int main( int argc, char** argv )
             rcs_lbound,
             rcs_ubound,
             max_attempts,
+            gossip_production,
             pow_address,
-            work_groups,
-            gossip_production
+            work_groups
          );
 
          LOG(info) << "Using " << work_groups << " work groups";

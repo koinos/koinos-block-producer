@@ -40,9 +40,9 @@ pow_producer::pow_producer(
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
+   bool gossip_production,
    contract_id_type pow_contract_id,
-   std::size_t worker_groups,
-   bool gossip_production ) :
+   std::size_t worker_groups ) :
       block_producer(
          signing_key,
          main_context,
