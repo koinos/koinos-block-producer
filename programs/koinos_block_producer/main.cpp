@@ -42,6 +42,8 @@
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
 #define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
 #define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
+#define GOSSIP_PRODUCTION_OPTION           "gossip-production"
+#define GOSSIP_PRODUCTION_DEFAULT          bool( false )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
 #define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
 #define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
@@ -75,6 +77,7 @@ int main( int argc, char** argv )
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
+         (GOSSIP_PRODUCTION_OPTION         ",G",                                          "Use p2p gossip status to determine block production")
          (STALE_PRODUCTION_THRESHOLD_OPTION",s",
             program_options::value< int64_t >(), "The distance of time in seconds from head where production should begin (-1 to disable)");
 
@@ -193,6 +196,8 @@ int main( int argc, char** argv )
       client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
       LOG(info) << "Established connection to mempool";
 
+      bool gossip_production = args.count( HELP_OPTION );
+
       asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;
 
@@ -207,7 +212,8 @@ int main( int argc, char** argv )
             production_threshold,
             rcs_lbound,
             rcs_ubound,
-            max_attempts
+            max_attempts,
+            gossip_production
          );
       }
       else if ( algorithm == POW_ALGORITHM )
@@ -225,7 +231,8 @@ int main( int argc, char** argv )
             rcs_ubound,
             max_attempts,
             pow_address,
-            work_groups
+            work_groups,
+            gossip_production
          );
 
          LOG(info) << "Using " << work_groups << " work groups";
@@ -257,6 +264,28 @@ int main( int argc, char** argv )
             }
          }
       );
+
+      reqhandler.add_broadcast_handler(
+         "koinos.gossip.status",
+         [&]( const std::string& msg )
+         {
+            try
+            {
+               broadcast::gossip_status gsm;
+               gsm.ParseFromString( msg );
+               producer->on_gossip_status( gsm );
+            }
+            catch ( const boost::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << boost::diagnostic_information( e );
+            }
+            catch ( const std::exception& e )
+            {
+               LOG(warning) << "Error handling block broadcast: " << e.what();
+            }
+         }
+      );
+      
 
       LOG(info) << "Connecting AMQP request handler...";
       reqhandler.connect( amqp_url );

@@ -8,6 +8,7 @@
 
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
+#include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/exception.hpp>
 #include <koinos/mq/client.hpp>
 #include <koinos/protocol/protocol.pb.h>
@@ -30,10 +31,12 @@ public:
       int64_t production_threshold,
       uint64_t resources_lower_bound,
       uint64_t resources_upper_bound,
-      uint64_t max_inclusion_attempts
+      uint64_t max_inclusion_attempts,
+      bool gossip_production
    );
    virtual ~block_producer();
 
+   virtual void on_gossip_status( const broadcast::gossip_status& gs );
    virtual void on_block_accept( const protocol::block& b );
 
 protected:
@@ -55,6 +58,7 @@ protected:
    const uint64_t                   _resources_lower_bound;
    const uint64_t                   _resources_upper_bound;
    const uint64_t                   _max_inclusion_attempts;
+   const bool                       _gossip_production;
 
 private:
    void on_run( const boost::system::error_code& ec );

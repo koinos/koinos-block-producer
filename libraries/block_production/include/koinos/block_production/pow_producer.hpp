@@ -35,7 +35,8 @@ public:
       uint64_t resources_upper_bound,
       uint64_t max_inclusion_attempts,
       contract_id_type pow_contract_id,
-      std::size_t worker_groups
+      std::size_t worker_groups,
+      bool gossip_production
    );
    ~pow_producer();
 

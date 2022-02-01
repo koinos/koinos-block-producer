@@ -6,7 +6,9 @@
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/rpc/p2p/p2p_rpc.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
+#include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/hex.hpp>
 #include <koinos/util/services.hpp>
@@ -21,7 +23,8 @@ block_producer::block_producer(
    int64_t production_threshold,
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
-   uint64_t max_inclusion_attempts ) :
+   uint64_t max_inclusion_attempts,
+   bool gossip_production ) :
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
@@ -29,7 +32,8 @@ block_producer::block_producer(
    _production_threshold( production_threshold ),
    _resources_lower_bound( resources_lower_bound ),
    _resources_upper_bound( resources_upper_bound ),
-   _max_inclusion_attempts( max_inclusion_attempts )
+   _max_inclusion_attempts( max_inclusion_attempts ),
+   _gossip_production( gossip_production )
 {
    boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
 }
@@ -44,15 +48,37 @@ void block_producer::on_run( const boost::system::error_code& ec )
    if ( !_halted )
       return;
 
-   if ( _production_threshold < 0 )
+   if ( _gossip_production )
    {
-      LOG(info) << "Starting block production with stale production permitted";
-      _halted = false;
-      commence();
+      LOG(info) << "Checking p2p gossip status";
+
+      rpc::p2p::p2p_request req;
+
+      auto future = _rpc_client->rpc( util::service::p2p, util::converter::as< std::string >( req ) );
+
+      rpc::p2p::p2p_response resp;
+      resp.ParseFromString( future.get() );
+
+      if ( resp.has_error() )
+      {
+         KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
+      }
+
+      KOINOS_ASSERT( resp.has_get_gossip_status(), rpc_failure, "unexpected RPC response when retrieving gossip status: ${r}", ("r", resp) );
+      const auto& gossip_status = resp.get_gossip_status();
+
+      if ( gossip_status.enabled() )
+      {
+         LOG(info) << "Gossip is enabled, starting block production";
+         _halted = false;
+         commence();
+      }
    }
    else
    {
-      LOG(info) << "Awaiting block production threshold of " << _production_threshold << "s from head block time";
+      LOG(info) << "Starting block production";
+      _halted = false;
+      commence();
    }
 }
 
@@ -265,43 +291,28 @@ uint64_t block_producer::now()
    return last_block_time > now ? last_block_time : now;
 }
 
-void block_producer::on_block_accept( const protocol::block& b )
-{
-   auto last_block_time = _last_block_time.load();
+void block_producer::on_block_accept( const protocol::block& b ) { }
 
-   if ( b.header().timestamp() > last_block_time )
+void block_producer::on_gossip_status( const broadcast::gossip_status& gs )
+{
+   if ( !_gossip_production )
    {
-      KOINOS_ASSERT( b.header().timestamp() <= std::numeric_limits< int64_t >::max(), timestamp_overflow, "timestamp would overflow signed 64-bit integer" );
-      last_block_time = b.header().timestamp();
-      _last_block_time = last_block_time;
+      return;
    }
 
-   if ( _production_threshold >= 0 )
+   if ( gs.enabled() )
    {
-      auto now = std::chrono::duration_cast< std::chrono::milliseconds >(
-         std::chrono::system_clock::now().time_since_epoch()
-      ).count();
-
-      auto threshold_ms = _production_threshold * 1000;
-      auto time_delta   = now - last_block_time ;
-
-      if ( time_delta <= threshold_ms )
+      if ( _halted )
       {
-         if ( _halted )
-         {
-            LOG(info) << "Within " << _production_threshold << "s of head block time, starting block production";
-            _halted = false;
-            commence();
-         }
+         LOG(info) << "Gossip enabled, starting block production";
+         _halted = false;
+         commence();
       }
       else
       {
-         if ( !_halted )
-         {
-            LOG(info) << "Fell outside " << _production_threshold << "s of head block time, stopping production";
-            _halted = true;
-            halt();
-         }
+         LOG(info) << "Gossip disabled, halting block production";
+         _halted = true;
+         halt();
       }
    }
 }

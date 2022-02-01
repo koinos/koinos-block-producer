@@ -23,7 +23,8 @@ federated_producer::federated_producer(
    int64_t production_threshold,
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
-   uint64_t max_inclusion_attempts ) :
+   uint64_t max_inclusion_attempts,
+   bool gossip_production ) :
       block_producer(
          signing_key,
          main_context,
@@ -32,7 +33,8 @@ federated_producer::federated_producer(
          production_threshold,
          resources_lower_bound,
          resources_upper_bound,
-         max_inclusion_attempts
+         max_inclusion_attempts,
+         gossip_production
       ),
       _timer( _production_context ) {}
 

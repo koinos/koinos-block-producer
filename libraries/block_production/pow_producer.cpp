@@ -41,7 +41,8 @@ pow_producer::pow_producer(
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
    contract_id_type pow_contract_id,
-   std::size_t worker_groups ) :
+   std::size_t worker_groups,
+   bool gossip_production ) :
       block_producer(
          signing_key,
          main_context,
@@ -50,7 +51,8 @@ pow_producer::pow_producer(
          production_threshold,
          resources_lower_bound,
          resources_upper_bound,
-         max_inclusion_attempts
+         max_inclusion_attempts,
+         gossip_production
       ),
       _pow_contract_id( pow_contract_id ),
       _update_timer( _main_context ),
