@@ -43,6 +43,7 @@
 #define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
 #define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
+#define GOSSIP_PRODUCTION_DEFAULT          bool( false )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
 #define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
 #define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
@@ -119,8 +120,9 @@ int main( int argc, char** argv )
       auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
       auto rcs_lbound   = util::get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
-      auto rcs_ubound   = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
-      auto max_attempts = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
+      auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
+      auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
 
       auto production_threshold = util::get_option< int64_t >(
          STALE_PRODUCTION_THRESHOLD_OPTION,
@@ -194,8 +196,6 @@ int main( int argc, char** argv )
       mreq.mutable_reserved();
       client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
       LOG(info) << "Established connection to mempool";
-
-      bool gossip_production = args.count( GOSSIP_PRODUCTION_OPTION );
 
       asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;

@@ -62,7 +62,7 @@ void block_producer::on_run( const boost::system::error_code& ec )
 
       if ( resp.has_error() )
       {
-         KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
+         KOINOS_THROW( rpc_failure, "unable to retrieve gossip status, ${e}", ("e", resp.error().message()) );
       }
 
       KOINOS_ASSERT( resp.has_get_gossip_status(), rpc_failure, "unexpected RPC response when retrieving gossip status: ${r}", ("r", resp) );
@@ -309,13 +309,17 @@ void block_producer::on_gossip_status( const broadcast::gossip_status& gs )
          _halted = false;
          commence();
       }
-      else
+   }
+   else
+   {
+      if ( !_halted )
       {
          LOG(info) << "Gossip disabled, halting block production";
          _halted = true;
          halt();
       }
    }
+   
 }
 
 } // koinos::block_production
