@@ -36,10 +36,10 @@ pow_producer::pow_producer(
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
-   int64_t production_threshold,
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
+   bool gossip_production,
    contract_id_type pow_contract_id,
    std::size_t worker_groups ) :
       block_producer(
@@ -47,10 +47,10 @@ pow_producer::pow_producer(
          main_context,
          production_context,
          rpc_client,
-         production_threshold,
          resources_lower_bound,
          resources_upper_bound,
-         max_inclusion_attempts
+         max_inclusion_attempts,
+         gossip_production
       ),
       _pow_contract_id( pow_contract_id ),
       _update_timer( _main_context ),

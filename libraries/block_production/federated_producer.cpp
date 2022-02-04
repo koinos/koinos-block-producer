@@ -20,19 +20,19 @@ federated_producer::federated_producer(
    boost::asio::io_context& main_context,
    boost::asio::io_context& production_context,
    std::shared_ptr< mq::client > rpc_client,
-   int64_t production_threshold,
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
-   uint64_t max_inclusion_attempts ) :
+   uint64_t max_inclusion_attempts,
+   bool gossip_production ) :
       block_producer(
          signing_key,
          main_context,
          production_context,
          rpc_client,
-         production_threshold,
          resources_lower_bound,
          resources_upper_bound,
-         max_inclusion_attempts
+         max_inclusion_attempts,
+         gossip_production
       ),
       _timer( _production_context ) {}
 
