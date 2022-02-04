@@ -40,8 +40,6 @@
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
-#define STALE_PRODUCTION_THRESHOLD_OPTION  "stale-production-threshold"
-#define STALE_PRODUCTION_THRESHOLD_DEFAULT int64_t( 1800 )
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( false )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
@@ -77,7 +75,8 @@ int main( int argc, char** argv )
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
-         (GOSSIP_PRODUCTION_OPTION         ",G",                                          "Use p2p gossip status to determine block production");
+         (GOSSIP_PRODUCTION_OPTION             , 
+            program_options::bool_switch()->default_value(true),  "Use p2p gossip status to determine block production");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
