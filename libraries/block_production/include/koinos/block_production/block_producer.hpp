@@ -28,7 +28,6 @@ public:
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client,
-      int64_t production_threshold,
       uint64_t resources_lower_bound,
       uint64_t resources_upper_bound,
       uint64_t max_inclusion_attempts,
@@ -54,7 +53,6 @@ protected:
    const crypto::private_key        _signing_key;
    std::atomic< int64_t >           _last_block_time = 0;
    std::atomic< bool >              _halted = true;
-   const int64_t                    _production_threshold;
    const uint64_t                   _resources_lower_bound;
    const uint64_t                   _resources_upper_bound;
    const uint64_t                   _max_inclusion_attempts;

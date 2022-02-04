@@ -16,7 +16,6 @@ public:
       boost::asio::io_context& main_context,
       boost::asio::io_context& production_context,
       std::shared_ptr< mq::client > rpc_client,
-      int64_t production_threshold,
       uint64_t resources_lower_bound,
       uint64_t resources_upper_bound,
       uint64_t max_inclusion_attempts,

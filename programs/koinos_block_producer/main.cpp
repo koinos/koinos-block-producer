@@ -77,9 +77,7 @@ int main( int argc, char** argv )
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
-         (GOSSIP_PRODUCTION_OPTION         ",G",                                          "Use p2p gossip status to determine block production")
-         (STALE_PRODUCTION_THRESHOLD_OPTION",s",
-            program_options::value< int64_t >(), "The distance of time in seconds from head where production should begin (-1 to disable)");
+         (GOSSIP_PRODUCTION_OPTION         ",G",                                          "Use p2p gossip status to determine block production");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -124,25 +122,10 @@ int main( int argc, char** argv )
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
 
-      auto production_threshold = util::get_option< int64_t >(
-         STALE_PRODUCTION_THRESHOLD_OPTION,
-         STALE_PRODUCTION_THRESHOLD_DEFAULT,
-         args,
-         block_producer_config,
-         global_config
-      );
-
       initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
 
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
-
-      KOINOS_ASSERT(
-         production_threshold <= std::numeric_limits< int64_t >::max() / 1000,
-         invalid_argument,
-         "stale block production threshold would overflow, maximum value: ${v}",
-         ("v", std::numeric_limits< int64_t >::max() / 1000)
-      );
 
       KOINOS_ASSERT( jobs > 0, invalid_argument, "jobs must be greater than 0" );
 
@@ -208,7 +191,6 @@ int main( int argc, char** argv )
             main_context,
             work_context,
             client,
-            production_threshold,
             rcs_lbound,
             rcs_ubound,
             max_attempts,
@@ -225,7 +207,6 @@ int main( int argc, char** argv )
             main_context,
             work_context,
             client,
-            production_threshold,
             rcs_lbound,
             rcs_ubound,
             max_attempts,
