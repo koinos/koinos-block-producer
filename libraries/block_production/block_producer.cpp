@@ -236,6 +236,14 @@ bool block_producer::submit_block( protocol::block& b )
          try
          {
             auto data = nlohmann::json::parse( resp.error().data() );
+
+            if ( data.find( "logs" ) != data.end() )
+            {
+               const auto& logs = data[ "logs" ];
+               for ( const auto& log : logs )
+                  LOG(warning) << "Log: " << log;
+            }
+
             if ( data.find( "transaction_id" ) != data.end() )
             {
                const auto& trx_id = data[ "transaction_id" ];
