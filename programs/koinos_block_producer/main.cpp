@@ -37,7 +37,6 @@
 #define INSTANCE_ID_OPTION                 "instance-id"
 #define ALGORITHM_OPTION                   "algorithm"
 #define JOBS_OPTION                        "jobs"
-#define JOBS_DEFAULT                       uint64_t( 4 )
 #define WORK_GROUPS_OPTION                 "work-groups"
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
@@ -117,7 +116,7 @@ int main( int argc, char** argv )
       auto log_level    = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
       auto instance_id  = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, block_producer_config, global_config );
       auto algorithm    = util::get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
-      auto jobs         = util::get_option< uint64_t    >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, block_producer_config, global_config );
+      auto jobs         = util::get_option< uint64_t    >( JOBS_OPTION, uint64_t( std::thread::hardware_concurrency() ), args, block_producer_config, global_config );
       auto work_groups  = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
@@ -131,7 +130,7 @@ int main( int argc, char** argv )
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
 
-      KOINOS_ASSERT( jobs > 2, invalid_argument, "jobs must be greater than 2" );
+      KOINOS_ASSERT( jobs > 0, invalid_argument, "jobs must be greater than 0" );
 
       if ( config.IsNull() )
       {
@@ -184,7 +183,7 @@ int main( int argc, char** argv )
          main_context.stop();
       } );
 
-      for ( std::size_t i = 0; i < jobs; i++ )
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
          threads.emplace_back( [&]() { work_context.run(); } );
 
       auto client = std::make_shared< mq::client >( work_context );
@@ -287,7 +286,7 @@ int main( int argc, char** argv )
             }
          }
       );
-      
+
 
       LOG(info) << "Connecting AMQP request handler...";
       reqhandler.connect( amqp_url );
