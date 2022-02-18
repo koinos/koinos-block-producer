@@ -168,7 +168,7 @@ int main( int argc, char** argv )
       asio::io_context work_context, main_context;
       std::unique_ptr< block_production::block_producer > producer;
 
-      asio::signal_set signals( work_context, SIGINT, SIGTERM );
+      asio::signal_set signals( work_context );
       signals.add( SIGINT );
       signals.add( SIGTERM );
 #if defined( SIGQUIT )
