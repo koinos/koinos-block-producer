@@ -1,3 +1,4 @@
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
@@ -36,6 +37,7 @@
 #define INSTANCE_ID_OPTION                 "instance-id"
 #define ALGORITHM_OPTION                   "algorithm"
 #define JOBS_OPTION                        "jobs"
+#define JOBS_DEFAULT                       uint64_t( 4 )
 #define WORK_GROUPS_OPTION                 "work-groups"
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
@@ -57,6 +59,10 @@ using namespace koinos;
 
 int main( int argc, char** argv )
 {
+   std::atomic< bool > stopped = false;
+   int retcode = EXIT_SUCCESS;
+   std::vector< std::thread > threads;
+
    try
    {
       program_options::options_description options;
@@ -111,7 +117,7 @@ int main( int argc, char** argv )
       auto log_level    = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
       auto instance_id  = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, block_producer_config, global_config );
       auto algorithm    = util::get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
-      auto jobs         = util::get_option< uint64_t    >( JOBS_OPTION, std::thread::hardware_concurrency(), args, block_producer_config, global_config );
+      auto jobs         = util::get_option< uint64_t    >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, block_producer_config, global_config );
       auto work_groups  = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
@@ -125,7 +131,7 @@ int main( int argc, char** argv )
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
 
-      KOINOS_ASSERT( jobs > 0, invalid_argument, "jobs must be greater than 0" );
+      KOINOS_ASSERT( jobs > 2, invalid_argument, "jobs must be greater than 2" );
 
       if ( config.IsNull() )
       {
@@ -160,7 +166,28 @@ int main( int argc, char** argv )
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
-      auto client = std::make_shared< mq::client >();
+      asio::io_context work_context, main_context;
+      std::unique_ptr< block_production::block_producer > producer;
+
+      asio::signal_set signals( work_context, SIGINT, SIGTERM );
+      signals.add( SIGINT );
+      signals.add( SIGTERM );
+#if defined( SIGQUIT )
+      signals.add( SIGQUIT );
+#endif
+
+      signals.async_wait( [&]( const boost::system::error_code& err, int num )
+      {
+         LOG(info) << "Caught signal, shutting down...";
+         stopped = true;
+         work_context.stop();
+         main_context.stop();
+      } );
+
+      for ( std::size_t i = 0; i < jobs; i++ )
+         threads.emplace_back( [&]() { work_context.run(); } );
+
+      auto client = std::make_shared< mq::client >( work_context );
 
       LOG(info) << "Connecting AMQP client...";
       client->connect( amqp_url );
@@ -177,9 +204,6 @@ int main( int argc, char** argv )
       mreq.mutable_reserved();
       client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
       LOG(info) << "Established connection to mempool";
-
-      asio::io_context work_context, main_context;
-      std::unique_ptr< block_production::block_producer > producer;
 
       if ( algorithm == FEDERATED_ALGORITHM )
       {
@@ -272,49 +296,42 @@ int main( int argc, char** argv )
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
 
-      asio::signal_set signals( main_context, SIGINT, SIGTERM );
-
-      signals.async_wait( [&]( const boost::system::error_code& err, int num )
-      {
-         LOG(info) << "Caught signal, shutting down...";
-         asio::post(
-            main_context,
-            [&]()
-            {
-               work_context.stop();
-               main_context.stop();
-               client->disconnect();
-            }
-         );
-      } );
-
-      std::vector< std::thread > threads;
-      for ( std::size_t i = 0; i < jobs + 1; i++ )
-         threads.emplace_back( [&]() { work_context.run(); } );
-
+      auto work = asio::make_work_guard( main_context );
       main_context.run();
-
-      for ( auto& t : threads )
-         t.join();
-
-      return EXIT_SUCCESS;
    }
    catch ( const invalid_argument& e )
    {
       LOG(error) << "Invalid argument: " << e.what();
+      retcode = EXIT_FAILURE;
+   }
+   catch ( const koinos::exception& e )
+   {
+      if ( !stopped )
+      {
+         LOG(fatal) << "An unexpected error has occurred: " << e.what();
+         retcode = EXIT_FAILURE;
+      }
    }
    catch ( const std::exception& e )
    {
       LOG(fatal) << "An unexpected error has occurred: " << e.what();
+      retcode = EXIT_FAILURE;
    }
    catch ( const boost::exception& e )
    {
       LOG(fatal) << "An unexpected error has occurred: " << boost::diagnostic_information( e );
+      retcode = EXIT_FAILURE;
    }
    catch ( ... )
    {
       LOG(fatal) << "An unexpected error has occurred";
+      retcode = EXIT_FAILURE;
    }
+
+   for ( auto& t : threads )
+      t.join();
+
+   LOG(info) << "Shutdown gracefully";
 
    return EXIT_FAILURE;
 }
