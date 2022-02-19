@@ -180,7 +180,7 @@ int main( int argc, char** argv )
       {
          LOG(info) << "Caught signal, shutting down...";
          stopped = true;
-         work_context.stop();
+         //work_context.stop();
          main_context.stop();
       } );
 

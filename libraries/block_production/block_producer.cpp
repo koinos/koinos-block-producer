@@ -27,7 +27,7 @@ block_producer::block_producer(
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
-   _signals( main_context ),
+   _signals( production_context ),
    _rpc_client( rpc_client ),
    _resources_lower_bound( resources_lower_bound ),
    _resources_upper_bound( resources_upper_bound ),
