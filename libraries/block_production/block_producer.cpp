@@ -27,12 +27,25 @@ block_producer::block_producer(
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
+   _signals( main_context ),
    _rpc_client( rpc_client ),
    _resources_lower_bound( resources_lower_bound ),
    _resources_upper_bound( resources_upper_bound ),
    _max_inclusion_attempts( max_inclusion_attempts ),
    _gossip_production( gossip_production )
 {
+   _signals.add( SIGINT );
+   _signals.add( SIGTERM );
+#if defined(SIGQUIT)
+   _signals.add( SIGQUIT );
+#endif // defined(SIGQUIT)
+
+   _signals.async_wait( [&]( const boost::system::error_code&, int )
+   {
+      _halted = true;
+      halt();
+   } );
+
    boost::asio::post( _production_context, std::bind( &block_producer::on_run, this, boost::system::error_code{} ) );
 }
 
@@ -325,7 +338,7 @@ void block_producer::on_gossip_status( const broadcast::gossip_status& gs )
          halt();
       }
    }
-   
+
 }
 
 } // koinos::block_production

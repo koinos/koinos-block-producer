@@ -62,6 +62,10 @@ int main( int argc, char** argv )
    int retcode = EXIT_SUCCESS;
    std::vector< std::thread > threads;
 
+   asio::io_context work_context, main_context;
+   std::unique_ptr< block_production::block_producer > producer;
+   auto client = std::make_shared< mq::client >( work_context );
+
    try
    {
       program_options::options_description options;
@@ -165,9 +169,6 @@ int main( int argc, char** argv )
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
-      asio::io_context work_context, main_context;
-      std::unique_ptr< block_production::block_producer > producer;
-
       asio::signal_set signals( work_context, SIGINT, SIGTERM );
       signals.add( SIGINT );
       signals.add( SIGTERM );
@@ -185,8 +186,6 @@ int main( int argc, char** argv )
 
       for ( std::size_t i = 0; i < jobs + 1; i++ )
          threads.emplace_back( [&]() { work_context.run(); } );
-
-      auto client = std::make_shared< mq::client >( work_context );
 
       LOG(info) << "Connecting AMQP client...";
       client->connect( amqp_url );
