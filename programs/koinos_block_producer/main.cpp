@@ -169,7 +169,7 @@ int main( int argc, char** argv )
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
-      asio::signal_set signals( work_context, SIGINT, SIGTERM );
+      asio::signal_set signals( work_context );
       signals.add( SIGINT );
       signals.add( SIGTERM );
 #if defined( SIGQUIT )
@@ -180,7 +180,6 @@ int main( int argc, char** argv )
       {
          LOG(info) << "Caught signal, shutting down...";
          stopped = true;
-         //work_context.stop();
          main_context.stop();
       } );
 
