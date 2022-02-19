@@ -181,7 +181,6 @@ int main( int argc, char** argv )
          LOG(info) << "Caught signal, shutting down...";
          stopped = true;
          main_context.stop();
-         client->disconnect();
       } );
 
       for ( std::size_t i = 0; i < jobs + 1; i++ )
