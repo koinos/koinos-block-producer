@@ -185,14 +185,18 @@ void pow_producer::produce( const boost::system::error_code& ec )
       *done = true;
       _hashing = false;
 
-      LOG(warning) << e.what() << ", retrying in " << _error_wait_time.load().count() << "s";
+      if ( !_halted )
+      {
+         LOG(warning) << e.what() << ", retrying in " << _error_wait_time.load().count() << "s";
 
-      _error_timer.expires_from_now( _error_wait_time.load() );
-      _error_timer.async_wait( std::bind( &pow_producer::produce, this, std::placeholders::_1 ) );
+         _error_timer.expires_from_now( _error_wait_time.load() );
+         _error_timer.async_wait( std::bind( &pow_producer::produce, this, std::placeholders::_1 ) );
 
-      // Exponential backoff, max wait time 30 seconds
-      auto next_wait_time = std::min( uint64_t( _error_wait_time.load().count() * 2 ), uint64_t( 30 ) );
-      _error_wait_time = std::chrono::seconds( next_wait_time );
+         // Exponential backoff, max wait time 30 seconds
+         auto next_wait_time = std::min( uint64_t( _error_wait_time.load().count() * 2 ), uint64_t( 30 ) );
+         _error_wait_time = std::chrono::seconds( next_wait_time );
+      }
+
       return;
    }
 

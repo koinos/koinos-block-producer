@@ -1,3 +1,4 @@
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
@@ -57,6 +58,14 @@ using namespace koinos;
 
 int main( int argc, char** argv )
 {
+   std::atomic< bool > stopped = false;
+   int retcode = EXIT_SUCCESS;
+   std::vector< std::thread > threads;
+
+   asio::io_context work_context, main_context;
+   std::unique_ptr< block_production::block_producer > producer;
+   auto client = std::make_shared< mq::client >( work_context );
+
    try
    {
       program_options::options_description options;
@@ -160,7 +169,22 @@ int main( int argc, char** argv )
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
-      auto client = std::make_shared< mq::client >();
+      asio::signal_set signals( work_context );
+      signals.add( SIGINT );
+      signals.add( SIGTERM );
+#if defined( SIGQUIT )
+      signals.add( SIGQUIT );
+#endif
+
+      signals.async_wait( [&]( const boost::system::error_code& err, int num )
+      {
+         LOG(info) << "Caught signal, shutting down...";
+         stopped = true;
+         main_context.stop();
+      } );
+
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
+         threads.emplace_back( [&]() { work_context.run(); } );
 
       LOG(info) << "Connecting AMQP client...";
       client->connect( amqp_url );
@@ -177,9 +201,6 @@ int main( int argc, char** argv )
       mreq.mutable_reserved();
       client->rpc( util::service::mempool, mreq.SerializeAsString() ).get();
       LOG(info) << "Established connection to mempool";
-
-      asio::io_context work_context, main_context;
-      std::unique_ptr< block_production::block_producer > producer;
 
       if ( algorithm == FEDERATED_ALGORITHM )
       {
@@ -263,7 +284,7 @@ int main( int argc, char** argv )
             }
          }
       );
-      
+
 
       LOG(info) << "Connecting AMQP request handler...";
       reqhandler.connect( amqp_url );
@@ -272,49 +293,42 @@ int main( int argc, char** argv )
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";
 
-      asio::signal_set signals( main_context, SIGINT, SIGTERM );
-
-      signals.async_wait( [&]( const boost::system::error_code& err, int num )
-      {
-         LOG(info) << "Caught signal, shutting down...";
-         asio::post(
-            main_context,
-            [&]()
-            {
-               work_context.stop();
-               main_context.stop();
-               client->disconnect();
-            }
-         );
-      } );
-
-      std::vector< std::thread > threads;
-      for ( std::size_t i = 0; i < jobs + 1; i++ )
-         threads.emplace_back( [&]() { work_context.run(); } );
-
+      auto work = asio::make_work_guard( main_context );
       main_context.run();
-
-      for ( auto& t : threads )
-         t.join();
-
-      return EXIT_SUCCESS;
    }
    catch ( const invalid_argument& e )
    {
       LOG(error) << "Invalid argument: " << e.what();
+      retcode = EXIT_FAILURE;
+   }
+   catch ( const koinos::exception& e )
+   {
+      if ( !stopped )
+      {
+         LOG(fatal) << "An unexpected error has occurred: " << e.what();
+         retcode = EXIT_FAILURE;
+      }
    }
    catch ( const std::exception& e )
    {
       LOG(fatal) << "An unexpected error has occurred: " << e.what();
+      retcode = EXIT_FAILURE;
    }
    catch ( const boost::exception& e )
    {
       LOG(fatal) << "An unexpected error has occurred: " << boost::diagnostic_information( e );
+      retcode = EXIT_FAILURE;
    }
    catch ( ... )
    {
       LOG(fatal) << "An unexpected error has occurred";
+      retcode = EXIT_FAILURE;
    }
+
+   for ( auto& t : threads )
+      t.join();
+
+   LOG(info) << "Shutdown gracefully";
 
    return EXIT_FAILURE;
 }

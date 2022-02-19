@@ -5,6 +5,7 @@
 #include <variant>
 
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/signal_set.hpp>
 
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
@@ -49,6 +50,7 @@ protected:
 
    boost::asio::io_context&         _main_context;
    boost::asio::io_context&         _production_context;
+   boost::asio::signal_set          _signals;
    std::shared_ptr< mq::client >    _rpc_client;
    const crypto::private_key        _signing_key;
    std::atomic< int64_t >           _last_block_time = 0;
