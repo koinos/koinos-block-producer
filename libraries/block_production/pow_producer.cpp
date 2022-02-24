@@ -15,7 +15,7 @@
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/services.hpp>
 
-const uint32_t get_difficulty_entrypoint = 1249216561;
+const uint32_t get_difficulty_entrypoint = 0x2e40cb65;
 
 using namespace std::chrono_literals;
 
