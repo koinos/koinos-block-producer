@@ -37,7 +37,7 @@
 #define INSTANCE_ID_OPTION                 "instance-id"
 #define ALGORITHM_OPTION                   "algorithm"
 #define JOBS_OPTION                        "jobs"
-#define JOBS_DEFAULT                        uint64_t( 2 )
+#define JOBS_DEFAULT                       uint64_t( 2 )
 #define WORK_GROUPS_OPTION                 "work-groups"
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
