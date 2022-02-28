@@ -254,7 +254,7 @@ bool block_producer::submit_block( protocol::block& b )
             {
                const auto& logs = data[ "logs" ];
                for ( const auto& log : logs )
-                  LOG(warning) << "Log: " << log;
+                  LOG(warning) << log;
             }
 
             if ( data.find( "transaction_id" ) != data.end() )
