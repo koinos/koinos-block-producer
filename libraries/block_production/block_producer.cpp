@@ -244,6 +244,8 @@ bool block_producer::submit_block( protocol::block& b )
 
    if ( resp.has_error() )
    {
+      LOG(warning) << "Error while submitting block: " << resp.error().message();
+
       if ( resp.error().data().length() > 0 )
       {
          try
@@ -253,8 +255,10 @@ bool block_producer::submit_block( protocol::block& b )
             if ( data.find( "logs" ) != data.end() )
             {
                const auto& logs = data[ "logs" ];
+
+               LOG(warning) << "System logs:";
                for ( const auto& log : logs )
-                  LOG(warning) << log;
+                  LOG(warning) << " - " << log.get< std::string >();
             }
 
             if ( data.find( "transaction_id" ) != data.end() )
@@ -274,7 +278,6 @@ bool block_producer::submit_block( protocol::block& b )
          }
       }
 
-      LOG(warning) << "Error while submitting block: " << resp.error().message();
       return false;
    }
 
