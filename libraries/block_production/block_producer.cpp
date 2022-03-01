@@ -2,7 +2,6 @@
 
 #include <boost/asio/post.hpp>
 
-#include <koinos/chain/value.pb.h>
 #include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
