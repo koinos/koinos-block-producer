@@ -106,6 +106,9 @@ void pow_producer::produce( const boost::system::error_code& ec )
 
       do
       {
+         *done = false;
+         nonce->reset();
+
          auto diff_meta = get_difficulty_meta();
          auto target = util::converter::to< uint256_t >( diff_meta.target() );
 

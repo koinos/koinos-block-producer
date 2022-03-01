@@ -225,7 +225,7 @@ void block_producer::trim_block( protocol::block& b, const std::string& trx_id )
    {
       if ( trxs->at( i ).id() == trx_id )
       {
-         trxs->DeleteSubrange( i, trxs->size() );
+         trxs->DeleteSubrange( i, trxs->size() - i );
          return;
       }
    }
