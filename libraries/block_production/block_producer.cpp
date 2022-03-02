@@ -225,10 +225,14 @@ void block_producer::trim_block( protocol::block& b, const std::string& trx_id )
    {
       if ( trxs->at( i ).id() == trx_id )
       {
-         trxs->DeleteSubrange( i, trxs->size() - i );
+         const auto num_trimmed = trxs->size() - i;
+         LOG(info) << "Trimming the last " << num_trimmed << " transactions off block";
+         trxs->DeleteSubrange( i, num_trimmed );
          return;
       }
    }
+
+   LOG(info) << "Modified block now contains " << trxs->size() << " " << ( trxs->size() == 1 ? "transaction" : "transactions" );
 }
 
 bool block_producer::submit_block( protocol::block& b )
@@ -256,7 +260,9 @@ bool block_producer::submit_block( protocol::block& b )
             {
                const auto& logs = data[ "logs" ];
 
-               LOG(warning) << "System logs:";
+               if ( logs.size() )
+                  LOG(warning) << "System logs:";
+
                for ( const auto& log : logs )
                   LOG(warning) << " - " << log.get< std::string >();
             }
