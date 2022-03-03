@@ -45,9 +45,9 @@
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
-#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
+#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 50 )
 #define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
-#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 90 )
+#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 75 )
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 100 )
 
@@ -63,9 +63,10 @@ int main( int argc, char** argv )
    int retcode = EXIT_SUCCESS;
    std::vector< std::thread > threads;
 
-   asio::io_context work_context, client_context, main_context;
+   asio::io_context work_context, client_context, request_context, main_context;
    std::unique_ptr< block_production::block_producer > producer;
    auto client = std::make_shared< mq::client >( client_context );
+   mq::request_handler reqhandler( request_context );
 
    try
    {
@@ -186,8 +187,10 @@ int main( int argc, char** argv )
 
       threads.emplace_back( [&]() { client_context.run(); } );
       threads.emplace_back( [&]() { client_context.run(); } );
+      threads.emplace_back( [&]() { request_context.run(); } );
+      threads.emplace_back( [&]() { request_context.run(); } );
 
-      for ( std::size_t i = 0; i < jobs; i++ )
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
          threads.emplace_back( [&]() { work_context.run(); } );
 
       LOG(info) << "Connecting AMQP client...";
@@ -244,8 +247,6 @@ int main( int argc, char** argv )
       {
          KOINOS_THROW( invalid_argument, "unrecognized consensus algorithm" );
       }
-
-      mq::request_handler reqhandler( work_context );
 
       reqhandler.add_broadcast_handler(
          "koinos.block.accept",
