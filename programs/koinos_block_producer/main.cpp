@@ -45,11 +45,11 @@
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
-#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 50 )
+#define RESOURCES_LOWER_BOUND_DEFAULT      uint64_t( 75 )
 #define RESOURCES_UPPER_BOUND_OPTION       "resources-upper-bound"
-#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 75 )
+#define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 90 )
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
-#define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 100 )
+#define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 2000 )
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
