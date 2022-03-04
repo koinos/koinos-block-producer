@@ -130,7 +130,7 @@ protocol::block block_producer::next_block()
 void block_producer::fill_block( protocol::block& b )
 {
    rpc::mempool::mempool_request mempool_req;
-   mempool_req.mutable_get_pending_transactions()->set_limit( 100 );
+   mempool_req.mutable_get_pending_transactions()->set_limit( _max_inclusion_attempts );
 
    rpc::chain::chain_request chain_req;
    chain_req.mutable_get_resource_limits();
@@ -178,7 +178,7 @@ void block_producer::fill_block( protocol::block& b )
       if ( ptransaction_index > _max_inclusion_attempts - 1 )
          break;
 
-      // If we fill at least 75% of a given block resource we proceed
+      // If we fill at least the resource lower bound of a given block resource we proceed
       if ( disk_storage_count >= block_resource_limits.disk_storage_limit() * _resources_lower_bound / 100 )
          break;
 
