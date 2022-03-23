@@ -133,7 +133,7 @@ int main( int argc, char** argv )
       auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
-      auto proposal_ids      = get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
+      auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
 
       initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
 
