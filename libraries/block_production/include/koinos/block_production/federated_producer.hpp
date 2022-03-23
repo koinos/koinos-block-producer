@@ -19,7 +19,8 @@ public:
       uint64_t resources_lower_bound,
       uint64_t resources_upper_bound,
       uint64_t max_inclusion_attempts,
-      bool gossip_production
+      bool gossip_production,
+      const std::vector< std::string >& approved_proposals
    );
    ~federated_producer();
 

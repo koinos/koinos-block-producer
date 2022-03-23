@@ -23,7 +23,8 @@ federated_producer::federated_producer(
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
-   bool gossip_production ) :
+   bool gossip_production,
+   const std::vector< std::string >& approved_proposals ) :
       block_producer(
          signing_key,
          main_context,
@@ -32,7 +33,8 @@ federated_producer::federated_producer(
          resources_lower_bound,
          resources_upper_bound,
          max_inclusion_attempts,
-         gossip_production
+         gossip_production,
+         approved_proposals
       ),
       _timer( _production_context ) {}
 

@@ -21,6 +21,7 @@
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util/base58.hpp>
 #include <koinos/util/conversion.hpp>
+#include <koinos/util/hex.hpp>
 #include <koinos/util/options.hpp>
 #include <koinos/util/random.hpp>
 #include <koinos/util/services.hpp>
@@ -50,6 +51,7 @@
 #define RESOURCES_UPPER_BOUND_DEFAULT      uint64_t( 90 )
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 2000 )
+#define APPROVE_PROPOSALS_OPTION           "approve-proposals"
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
@@ -86,7 +88,8 @@ int main( int argc, char** argv )
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
-         (GOSSIP_PRODUCTION_OPTION             , program_options::value< bool        >(), "Use p2p gossip status to determine block production");
+         (GOSSIP_PRODUCTION_OPTION             , program_options::value< bool        >(), "Use p2p gossip status to determine block production")
+         (APPROVE_PROPOSALS_OPTION         ",v", program_options::value< std::vector< std::string > >()->multitoken(), "A list a proposal to approve when producing a block");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -130,6 +133,7 @@ int main( int argc, char** argv )
       auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
+      auto proposal_ids      = get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
 
       initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
 
@@ -170,6 +174,29 @@ int main( int argc, char** argv )
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
+
+      std::vector< std::string > approved_proposals;
+
+      for ( const auto& id : proposal_ids )
+      {
+         try
+         {
+            approved_proposals.emplace_back( util::from_hex< std::string >( id ) );
+         }
+         catch( const std::exception& e )
+         {
+            KOINOS_THROW( invalid_argument, "could not parse proposal id '${p}'", ("p", id) );
+         }
+      }
+
+      if ( proposal_ids.size() )
+      {
+         LOG(info) << "Approved Proposals:";
+         for( const auto& p : proposal_ids )
+         {
+            LOG(info) << " - " << p;
+         }
+      }
 
       asio::signal_set signals( work_context );
       signals.add( SIGINT );
@@ -220,7 +247,8 @@ int main( int argc, char** argv )
             rcs_lbound,
             rcs_ubound,
             max_attempts,
-            gossip_production
+            gossip_production,
+            approved_proposals
          );
       }
       else if ( algorithm == POW_ALGORITHM )
@@ -237,6 +265,7 @@ int main( int argc, char** argv )
             rcs_ubound,
             max_attempts,
             gossip_production,
+            approved_proposals,
             pow_address,
             work_groups
          );
@@ -293,7 +322,7 @@ int main( int argc, char** argv )
 
       LOG(info) << "Connecting AMQP request handler...";
       reqhandler.connect( amqp_url );
-      LOG(info) << "Connected client to AMQP server";
+      LOG(info) << "Established request handler connection to the AMQP server";
 
       LOG(info) << "Using " << jobs << " jobs";
       LOG(info) << "Starting block producer...";

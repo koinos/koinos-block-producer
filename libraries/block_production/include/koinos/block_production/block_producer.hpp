@@ -32,7 +32,8 @@ public:
       uint64_t resources_lower_bound,
       uint64_t resources_upper_bound,
       uint64_t max_inclusion_attempts,
-      bool gossip_production
+      bool gossip_production,
+      const std::vector< std::string >& approved_proposals
    );
    virtual ~block_producer();
 
@@ -48,17 +49,18 @@ protected:
    virtual void commence() = 0;
    virtual void halt()     = 0;
 
-   boost::asio::io_context&         _main_context;
-   boost::asio::io_context&         _production_context;
-   boost::asio::signal_set          _signals;
-   std::shared_ptr< mq::client >    _rpc_client;
-   const crypto::private_key        _signing_key;
-   std::atomic< int64_t >           _last_block_time = 0;
-   std::atomic< bool >              _halted = true;
-   const uint64_t                   _resources_lower_bound;
-   const uint64_t                   _resources_upper_bound;
-   const uint64_t                   _max_inclusion_attempts;
-   const bool                       _gossip_production;
+   boost::asio::io_context&          _main_context;
+   boost::asio::io_context&          _production_context;
+   boost::asio::signal_set           _signals;
+   std::shared_ptr< mq::client >     _rpc_client;
+   const crypto::private_key         _signing_key;
+   std::atomic< int64_t >            _last_block_time = 0;
+   std::atomic< bool >               _halted = true;
+   const uint64_t                    _resources_lower_bound;
+   const uint64_t                    _resources_upper_bound;
+   const uint64_t                    _max_inclusion_attempts;
+   const bool                        _gossip_production;
+   const std::vector< std::string >& _approved_proposals;
 
 private:
    void on_run( const boost::system::error_code& ec );
