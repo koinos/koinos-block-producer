@@ -23,7 +23,8 @@ block_producer::block_producer(
    uint64_t resources_lower_bound,
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
-   bool gossip_production ) :
+   bool gossip_production,
+   const std::vector< std::string >& approved_proposals ) :
    _signing_key( signing_key ),
    _main_context( main_context ),
    _production_context( production_context ),
@@ -32,7 +33,8 @@ block_producer::block_producer(
    _resources_lower_bound( resources_lower_bound ),
    _resources_upper_bound( resources_upper_bound ),
    _max_inclusion_attempts( max_inclusion_attempts ),
-   _gossip_production( gossip_production )
+   _gossip_production( gossip_production ),
+   _approved_proposals( approved_proposals )
 {
    _signals.add( SIGINT );
    _signals.add( SIGTERM );
@@ -119,6 +121,7 @@ protocol::block block_producer::next_block()
    b.mutable_header()->set_timestamp( now() );
    b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
    b.mutable_header()->set_signer( _signing_key.get_public_key().to_address_bytes() );
+   b.mutable_header()->mutable_approved_proposals()->Add( _approved_proposals.begin(), _approved_proposals.end() );
 
    fill_block( b );
 

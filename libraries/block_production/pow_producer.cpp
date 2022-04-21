@@ -40,6 +40,7 @@ pow_producer::pow_producer(
    uint64_t resources_upper_bound,
    uint64_t max_inclusion_attempts,
    bool gossip_production,
+   const std::vector< std::string >& approved_proposals,
    contract_id_type pow_contract_id,
    std::size_t worker_groups ) :
       block_producer(
@@ -50,7 +51,8 @@ pow_producer::pow_producer(
          resources_lower_bound,
          resources_upper_bound,
          max_inclusion_attempts,
-         gossip_production
+         gossip_production,
+         approved_proposals
       ),
       _pow_contract_id( pow_contract_id ),
       _update_timer( _main_context ),
