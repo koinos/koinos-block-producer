@@ -262,7 +262,11 @@ int main( int argc, char** argv )
       else if ( algorithm == POB_ALGORITHM )
       {
          LOG(info) << "Using " << POB_ALGORITHM << " algorithm";
-         auto pob_address = util::from_base58< std::string >( pow_id );
+
+         KOINOS_ASSERT( !pob_id.empty(), invalid_argument, "A proof of burn contract ID must be provided" );
+         KOINOS_ASSERT( !vhp_id.empty(), invalid_argument, "A VHP contract ID must be provided" );
+
+         auto pob_address = util::from_base58< std::string >( pob_id );
          auto vhp_address = util::from_base58< std::string >( vhp_id );
 
          producer = std::make_unique< block_production::pob_producer >(
@@ -284,6 +288,9 @@ int main( int argc, char** argv )
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
+
+         KOINOS_ASSERT( !pow_id.empty(), invalid_argument, "A proof of work contract ID must be provided" );
+
          auto pow_address = util::from_base58< std::string >( pow_id );
 
          producer = std::make_unique< block_production::pow_producer >(
