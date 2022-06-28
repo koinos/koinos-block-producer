@@ -12,6 +12,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <koinos/block_production/federated_producer.hpp>
+#include <koinos/block_production/pob_producer.hpp>
 #include <koinos/block_production/pow_producer.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
@@ -28,6 +29,7 @@
 
 #define FEDERATED_ALGORITHM                "federated"
 #define POW_ALGORITHM                      "pow"
+#define POB_ALGORITHM                      "pob"
 
 #define HELP_OPTION                        "help"
 #define BASEDIR_OPTION                     "basedir"
@@ -43,6 +45,8 @@
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
+#define POB_CONTRACT_ID_OPTION             "pob-contract-id"
+#define VHP_CONTRACT_ID_OPTION             "vhp-contract-id"
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
@@ -85,6 +89,8 @@ int main( int argc, char** argv )
          (WORK_GROUPS_OPTION               ",w", program_options::value< uint64_t    >(), "The number of worker groups")
          (PRIVATE_KEY_FILE_OPTION          ",p", program_options::value< std::string >(), "The private key file")
          (POW_CONTRACT_ID_OPTION           ",c", program_options::value< std::string >(), "The PoW contract ID")
+         (POB_CONTRACT_ID_OPTION           ",b", program_options::value< std::string >(), "The PoB contract ID")
+         (VHP_CONTRACT_ID_OPTION           ",e", program_options::value< std::string >(), "The VHP contract ID")
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
@@ -129,6 +135,8 @@ int main( int argc, char** argv )
       auto work_groups  = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto pob_id       = util::get_option< std::string >( POB_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto vhp_id       = util::get_option< std::string >( VHP_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
       auto rcs_lbound   = util::get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
@@ -250,6 +258,28 @@ int main( int argc, char** argv )
             gossip_production,
             approved_proposals
          );
+      }
+      else if ( algorithm == POB_ALGORITHM )
+      {
+         LOG(info) << "Using " << POB_ALGORITHM << " algorithm";
+         auto pob_address = util::from_base58< std::string >( pow_id );
+         auto vhp_address = util::from_base58< std::string >( vhp_id );
+
+         producer = std::make_unique< block_production::pob_producer >(
+            signing_key,
+            main_context,
+            work_context,
+            client,
+            rcs_lbound,
+            rcs_ubound,
+            max_attempts,
+            gossip_production,
+            approved_proposals,
+            pob_address,
+            vhp_address
+         );
+
+         LOG(info) << "Using " << work_groups << " work groups";
       }
       else if ( algorithm == POW_ALGORITHM )
       {
