@@ -4,6 +4,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <variant>
@@ -20,6 +21,13 @@ using boost::multiprecision::uint512_t;
 using boost::multiprecision::uint256_t;
 
 using contract_id_type  = std::string;
+
+struct burn_production_bundle {
+   koinos::protocol::block block;
+   koinos::contracts::pob::metadata metadata;
+   uint64_t vhp_balance;
+   std::chrono::system_clock::time_point time_quantum;
+};
 
 class pob_producer : public block_producer
 {
@@ -51,14 +59,18 @@ private:
    const contract_id_type                        _vhp_contract_id;
    const uint32_t                                _get_metadata_entry_point = 0xfcf7a68f;
    const uint32_t                                _balance_of_entry_point = 0x5c721497;
-   std::mutex                                    _time_quantum_mutex;
+   std::mutex                                    _mutex;
    std::chrono::system_clock::time_point         _last_time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ 0 } };
 
+   std::shared_ptr< burn_production_bundle > next_bundle();
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );
-   void produce( const boost::system::error_code& ec );
    uint64_t get_vhp_balance();
-   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target );
+   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, const std::string& target );
    contracts::pob::metadata get_metadata();
+
+   // ASIO functions
+   void produce( const boost::system::error_code& ec, std::shared_ptr< burn_production_bundle > pb );
+   void query( const boost::system::error_code& ec );
 };
 
 } // koinos::block_production

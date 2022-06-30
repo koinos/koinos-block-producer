@@ -53,83 +53,75 @@ pob_producer::pob_producer(
 
 pob_producer::~pob_producer() = default;
 
-void pob_producer::produce( const boost::system::error_code& ec )
+void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr< burn_production_bundle > pb )
 {
    if ( ec == boost::asio::error::operation_aborted )
       return;
 
-   std::lock_guard< std::mutex > guard( _time_quantum_mutex );
-
-   auto time_point = next_time_quantum( _last_time_quantum );
-   if ( time_point > std::chrono::system_clock::now() + 5s )
+   if ( pb->time_quantum > std::chrono::system_clock::now() + 5s )
    {
       _production_timer.expires_at( std::chrono::system_clock::now() + 10ms );
-      _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error ) );
+      _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
       return;
    }
 
-   std::chrono::system_clock::time_point retry_time = std::chrono::system_clock::now();
+   std::lock_guard< std::mutex > guard( _mutex );
 
    try
    {
-      auto block = next_block();
+      auto timestamp = uint64_t( pb->time_quantum.time_since_epoch().count() );
 
-      auto metadata = get_metadata();
-      LOG(info) << "Metadata: " << metadata;
-
-      auto vhp_balance = get_vhp_balance();
-      LOG(info) << "VHP balance: " << vhp_balance << " VHPs";
-
-      auto difficulty = util::converter::to< uint256_t >( metadata.difficulty() );
-
-      auto time_quantum = uint64_t( time_point.time_since_epoch().count() );
-      LOG(info) << "Time quantum: " << time_quantum;
-
-      block.mutable_header()->set_timestamp( time_quantum );
+      pb->block.mutable_header()->set_timestamp( timestamp );
 
       contracts::pob::vrf_payload payload;
-      payload.set_seed( metadata.seed() );
-      payload.set_block_time( time_quantum );
+      payload.set_seed( pb->metadata.seed() );
+      payload.set_block_time( timestamp );
 
       auto [ proof, proof_hash ] = _signing_key.generate_random_proof( util::converter::as< std::string >( payload ) );
+
+      pb->block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, pb->block.header() ) ) );
 
       contracts::pob::signature_data signature_data;
       signature_data.set_vrf_hash( util::converter::as< std::string >( proof_hash ) );
       signature_data.set_vrf_proof( proof );
+      signature_data.set_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( pb->block.id() ) ) ) );
 
-      uint64_t block_submission_attempts = 0;
-      if ( difficulty_met( proof_hash, vhp_balance, difficulty ) )
+      pb->block.set_signature( util::converter::as< std::string >( signature_data ) );
+
+      if ( difficulty_met( proof_hash, pb->vhp_balance, pb->metadata.difficulty() ) )
       {
-         LOG(info) << "Difficulty met";
-         do
+         LOG(info) << "Burn difficulty met";
+
+         if ( submit_block( pb->block ) )
          {
-            block_submission_attempts++;
-
-            block.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, block.header() ) ) );
-
-            signature_data.set_signature( util::converter::as< std::string >( _signing_key.sign_compact( util::converter::to< crypto::multihash >( block.id() ) ) ) );
-
-            block.set_signature( util::converter::as< std::string >( signature_data ) );
-
-            LOG(info) << "Attempting block submission (" << block_submission_attempts << ")";
+            // A transaction has failed, it has been pruned from the block, immediately retry without the bad transaction
+            _production_timer.expires_at( std::chrono::system_clock::now() );
+            _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
          }
-         while ( submit_block( block ) && block_submission_attempts <= 3 );
+         else
+         {
+            // We've succeeded, we expect this timer to be usurped by block_accept
+            _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
+            _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+         }
       }
       else
       {
-         LOG(info) << "Difficulty not met";
-      }
+         LOG(info) << "Burn difficulty not met";
 
-      _last_time_quantum = time_point;
+         pb->time_quantum = next_time_quantum( pb->time_quantum );
+         _last_time_quantum = pb->time_quantum;
+
+         _production_timer.expires_at( std::chrono::system_clock::now() );
+         _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
+      }
    }
    catch ( const std::exception& e )
    {
-      LOG(warning) << e.what() << ", retrying in 1s...";
-      retry_time = std::chrono::system_clock::now() + 1s;
+      LOG(warning) << "Failed producing block, " << e.what() << ", retrying in 5s...";
+      _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
+      _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
    }
-
-   _production_timer.expires_at( retry_time );
-   _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error ) );
 }
 
 std::chrono::system_clock::time_point pob_producer::next_time_quantum( std::chrono::system_clock::time_point tp )
@@ -194,30 +186,60 @@ contracts::pob::metadata pob_producer::get_metadata()
    return meta.value();
 }
 
-bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target )
+bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, const std::string& target )
 {
-   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance <= target )
+   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance <= util::converter::to< uint256_t >( target ) )
       return true;
 
    return false;
+}
+
+void pob_producer::query( const boost::system::error_code& ec )
+{
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
+   try
+   {
+      auto bundle = next_bundle();
+      _production_timer.expires_at( std::chrono::system_clock::now() );
+      _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, bundle ) );
+   }
+   catch ( const std::exception& e )
+   {
+      LOG(warning) << "Failed querying chain, " << e.what() << ", retrying in 1s...";
+      _production_timer.expires_at( std::chrono::system_clock::now() + 1s );
+      _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+   }
+}
+
+std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
+{
+   auto pb = std::make_shared< burn_production_bundle >();
+
+   pb->block        = next_block();
+   pb->metadata     = get_metadata();
+   pb->vhp_balance  = get_vhp_balance();
+   pb->time_quantum = next_time_quantum( _last_time_quantum );
+
+   std::lock_guard< std::mutex > guard( _mutex );
+   _last_time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } };
+
+   return pb;
 }
 
 void pob_producer::on_block_accept( const protocol::block& b )
 {
    block_producer::on_block_accept( b );
 
-   std::lock_guard< std::mutex > guard( _time_quantum_mutex );
-
-   _last_time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ b.header().timestamp() } };
-
    _production_timer.expires_at( std::chrono::system_clock::now() );
-   _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error ) );
+   _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
 }
 
 void pob_producer::commence()
 {
    _production_timer.expires_at( std::chrono::system_clock::now() );
-   _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error ) );
+   _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
 }
 
 void pob_producer::halt()
