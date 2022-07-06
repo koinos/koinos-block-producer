@@ -61,6 +61,7 @@ private:
    const address_type                            _producer_address;
    const uint32_t                                _get_metadata_entry_point = 0xfcf7a68f;
    const uint32_t                                _balance_of_entry_point = 0x5c721497;
+   std::mutex                                    _mutex;
 
    std::shared_ptr< burn_production_bundle > next_bundle();
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );

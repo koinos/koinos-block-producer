@@ -60,6 +60,8 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
    if ( ec == boost::asio::error::operation_aborted )
       return;
 
+   std::lock_guard< std::mutex > lock( _mutex );
+
    if ( pb->time_quantum > std::chrono::system_clock::now() + 5s )
    {
       _production_timer.expires_at( std::chrono::system_clock::now() + 10ms );
@@ -194,6 +196,8 @@ void pob_producer::query( const boost::system::error_code& ec )
    if ( ec == boost::asio::error::operation_aborted )
       return;
 
+   std::lock_guard< std::mutex > lock( _mutex );
+
    try
    {
       auto bundle = next_bundle();
@@ -228,6 +232,8 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
    {
       LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height();
 
+      std::lock_guard< std::mutex > lock( _mutex );
+
       _production_timer.expires_at( std::chrono::system_clock::now() );
       _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
    }
@@ -235,6 +241,8 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
 
 void pob_producer::commence()
 {
+   std::lock_guard< std::mutex > lock( _mutex );
+
    _production_timer.expires_at( std::chrono::system_clock::now() );
    _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
 }

@@ -120,7 +120,7 @@ protocol::block block_producer::next_block( std::string signer )
 
    b.mutable_header()->set_previous( head_info.head_topology().id() );
    b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
-   b.mutable_header()->set_timestamp( now() );
+   b.mutable_header()->set_timestamp( std::max( now(), head_info.head_block_time() ) );
    b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
    b.mutable_header()->set_signer( signer );
    b.mutable_header()->mutable_approved_proposals()->Add( _approved_proposals.begin(), _approved_proposals.end() );
