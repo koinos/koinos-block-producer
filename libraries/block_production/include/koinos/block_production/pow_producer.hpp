@@ -40,7 +40,7 @@ public:
    );
    ~pow_producer();
 
-   virtual void on_block_accept( const protocol::block& b ) override;
+   virtual void on_block_accept( const broadcast::block_accepted& bam ) override;
 
 protected:
    void commence() override;

@@ -281,13 +281,13 @@ bool pow_producer::target_met( const crypto::multihash& hash, uint256_t target )
    return false;
 }
 
-void pow_producer::on_block_accept( const protocol::block& b )
+void pow_producer::on_block_accept( const broadcast::block_accepted& bam )
 {
-   block_producer::on_block_accept( b );
+   block_producer::on_block_accept( bam );
 
    {
       std::unique_lock< std::mutex > lock( _cv_mutex );
-      _last_known_height = b.header().height();
+      _last_known_height = bam.block().header().height();
       _cv.notify_one();
    }
 }

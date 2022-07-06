@@ -34,8 +34,9 @@ pob_producer::pob_producer(
    uint64_t max_inclusion_attempts,
    bool gossip_production,
    const std::vector< std::string >& approved_proposals,
-   contract_id_type pob_contract_id,
-   contract_id_type vhp_contract_id ) :
+   address_type pob_contract_id,
+   address_type vhp_contract_id,
+   address_type producer_address ) :
       block_producer(
          signing_key,
          main_context,
@@ -49,6 +50,7 @@ pob_producer::pob_producer(
       ),
       _pob_contract_id( pob_contract_id ),
       _vhp_contract_id( vhp_contract_id ),
+      _producer_address( producer_address ),
       _production_timer( _production_context ) {}
 
 pob_producer::~pob_producer() = default;
@@ -65,11 +67,9 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
       return;
    }
 
-   std::lock_guard< std::mutex > guard( _mutex );
-
    try
    {
-      auto timestamp = uint64_t( pb->time_quantum.time_since_epoch().count() );
+      auto timestamp = uint64_t( std::chrono::duration_cast< std::chrono::milliseconds >( pb->time_quantum.time_since_epoch() ).count() );
 
       pb->block.mutable_header()->set_timestamp( timestamp );
 
@@ -110,7 +110,6 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
          LOG(info) << "Burn difficulty not met";
 
          pb->time_quantum = next_time_quantum( pb->time_quantum );
-         _last_time_quantum = pb->time_quantum;
 
          _production_timer.expires_at( std::chrono::system_clock::now() );
          _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
@@ -141,24 +140,21 @@ uint64_t pob_producer::get_vhp_balance()
    read_contract->set_entry_point( _balance_of_entry_point );
 
    contracts::token::balance_of_arguments args;
-   args.set_owner( util::converter::as< std::string >( _signing_key.get_public_key().to_address_bytes() ) );
+   args.set_owner( _producer_address );
 
    read_contract->set_args( util::converter::as< std::string >( args ) );
 
    auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
 
    rpc::chain::chain_response resp;
-   resp.ParseFromString( future.get() );
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
 
-   if ( resp.has_error() )
-   {
-      KOINOS_THROW( rpc_failure, "error while retrieving VHP balance: ${e}", ("e", resp.error().message()) );
-   }
-
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving VHP balance: ${e}", ("e", resp.error().message()) );
    KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when VHP balance: ${r}", ("r", resp) );
 
    contracts::token::balance_of_result balance_result;
-   balance_result.ParseFromString( resp.read_contract().result() );
+   KOINOS_ASSERT( balance_result.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", balance_result.GetTypeName()) );
+
    return balance_result.value();
 }
 
@@ -172,17 +168,14 @@ contracts::pob::metadata pob_producer::get_metadata()
    auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
 
    rpc::chain::chain_response resp;
-   resp.ParseFromString( future.get() );
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
 
-   if ( resp.has_error() )
-   {
-      KOINOS_THROW( rpc_failure, "error while retrieving metadata from the pob contract: ${e}", ("e", resp.error().message()) );
-   }
-
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving metadata from the pob contract: ${e}", ("e", resp.error().message()) );
    KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when retrieving metadata: ${r}", ("r", resp) );
 
    contracts::pob::get_metadata_result meta;
-   meta.ParseFromString( resp.read_contract().result() );
+   KOINOS_ASSERT( meta.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", meta.GetTypeName()) );
+
    return meta.value();
 }
 
@@ -207,8 +200,8 @@ void pob_producer::query( const boost::system::error_code& ec )
    }
    catch ( const std::exception& e )
    {
-      LOG(warning) << "Failed querying chain, " << e.what() << ", retrying in 1s...";
-      _production_timer.expires_at( std::chrono::system_clock::now() + 1s );
+      LOG(warning) << "Failed querying chain, " << e.what() << ", retrying in 5s...";
+      _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
       _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
    }
 }
@@ -217,23 +210,25 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
 {
    auto pb = std::make_shared< burn_production_bundle >();
 
-   pb->block        = next_block();
+   pb->block        = next_block( _producer_address );
    pb->metadata     = get_metadata();
    pb->vhp_balance  = get_vhp_balance();
-   pb->time_quantum = next_time_quantum( _last_time_quantum );
-
-   std::lock_guard< std::mutex > guard( _mutex );
-   _last_time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } };
+   pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
 
    return pb;
 }
 
-void pob_producer::on_block_accept( const protocol::block& b )
+void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
 {
-   block_producer::on_block_accept( b );
+   block_producer::on_block_accept( bam );
 
-   _production_timer.expires_at( std::chrono::system_clock::now() );
-   _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+   if ( bam.head() )
+   {
+      LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height();
+
+      _production_timer.expires_at( std::chrono::system_clock::now() );
+      _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+   }
 }
 
 void pob_producer::commence()

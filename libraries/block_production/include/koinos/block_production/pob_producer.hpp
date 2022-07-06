@@ -20,7 +20,7 @@ namespace koinos::block_production {
 using boost::multiprecision::uint512_t;
 using boost::multiprecision::uint256_t;
 
-using contract_id_type  = std::string;
+using address_type = std::string;
 
 struct burn_production_bundle {
    koinos::protocol::block block;
@@ -42,12 +42,13 @@ public:
       uint64_t max_inclusion_attempts,
       bool gossip_production,
       const std::vector< std::string >& approved_proposals,
-      contract_id_type pob_contract_id,
-      contract_id_type vhp_contract_id
+      address_type pob_contract_id,
+      address_type vhp_contract_id,
+      address_type producer_address
    );
    ~pob_producer();
 
-   virtual void on_block_accept( const protocol::block& b ) override;
+   virtual void on_block_accept( const broadcast::block_accepted& bam ) override;
 
 protected:
    void commence() override;
@@ -55,12 +56,11 @@ protected:
 
 private:
    boost::asio::system_timer                     _production_timer;
-   const contract_id_type                        _pob_contract_id;
-   const contract_id_type                        _vhp_contract_id;
+   const address_type                            _pob_contract_id;
+   const address_type                            _vhp_contract_id;
+   const address_type                            _producer_address;
    const uint32_t                                _get_metadata_entry_point = 0xfcf7a68f;
    const uint32_t                                _balance_of_entry_point = 0x5c721497;
-   std::mutex                                    _mutex;
-   std::chrono::system_clock::time_point         _last_time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ 0 } };
 
    std::shared_ptr< burn_production_bundle > next_bundle();
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );
