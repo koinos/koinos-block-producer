@@ -88,7 +88,9 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
       pb->block.set_signature( util::converter::as< std::string >( signature_data ) );
 
-      if ( difficulty_met( proof_hash, pb->vhp_balance, pb->metadata.difficulty() ) )
+      uint256_t target = std::numeric_limits< uint256_t >::max() / util::converter::to< uint256_t >( pb->metadata.difficulty() );
+
+      if ( difficulty_met( proof_hash, pb->vhp_balance, target ) )
       {
          LOG(info) << "Burn difficulty met";
 
@@ -179,9 +181,9 @@ contracts::pob::metadata pob_producer::get_metadata()
    return meta.value();
 }
 
-bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, const std::string& target )
+bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target )
 {
-   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance <= util::converter::to< uint256_t >( target ) )
+   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance < target )
       return true;
 
    return false;

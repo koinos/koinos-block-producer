@@ -65,7 +65,7 @@ private:
    std::shared_ptr< burn_production_bundle > next_bundle();
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );
    uint64_t get_vhp_balance();
-   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, const std::string& target );
+   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target );
    contracts::pob::metadata get_metadata();
 
    // ASIO functions
