@@ -302,7 +302,7 @@ void pob_producer::next_auxiliary_bundle()
 
    constexpr uint32_t max_pow10 = 10;
 
-   KOINOS_ASSERT( vhp_decimals <= max_pow10, out_of_bounds_failure, "VHP decimals would exceed static array at index ${i}", ("i", vhp_decimals) );
+   KOINOS_ASSERT( vhp_decimals < max_pow10, out_of_bounds_failure, "VHP decimals would exceed static array at index ${i}", ("i", vhp_decimals) );
 
    static uint32_t pow10[ max_pow10 ] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
 
