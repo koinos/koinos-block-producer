@@ -64,7 +64,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
    if ( pb->time_quantum > std::chrono::system_clock::now() + 5s )
    {
-      _production_timer.expires_at( std::chrono::system_clock::now() + 10ms );
+      _production_timer.expires_at( std::chrono::system_clock::now() + std::chrono::milliseconds{ _auxiliary_data->quantum_length } );
       _production_timer.async_wait( boost::bind( &pob_producer::produce, this, boost::asio::placeholders::error, pb ) );
       return;
    }
@@ -106,7 +106,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
          {
             // We've succeeded, we expect this timer to be usurped by block_accept
             _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
-            _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+            _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
          }
       }
       else
@@ -160,6 +160,48 @@ uint64_t pob_producer::get_vhp_balance()
    return balance_result.value();
 }
 
+std::string pob_producer::get_vhp_symbol()
+{
+   rpc::chain::chain_request req;
+   auto read_contract = req.mutable_read_contract();
+   read_contract->set_contract_id( _vhp_contract_id );
+   read_contract->set_entry_point( _symbol_entry_point );
+
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
+
+   rpc::chain::chain_response resp;
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
+
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving VHP balance: ${e}", ("e", resp.error().message()) );
+   KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when VHP balance: ${r}", ("r", resp) );
+
+   contracts::token::symbol_result symbol;
+   KOINOS_ASSERT( symbol.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", symbol.GetTypeName()) );
+
+   return symbol.value();
+}
+
+uint32_t pob_producer::get_vhp_decimals()
+{
+   rpc::chain::chain_request req;
+   auto read_contract = req.mutable_read_contract();
+   read_contract->set_contract_id( _vhp_contract_id );
+   read_contract->set_entry_point( _decimals_entry_point );
+
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
+
+   rpc::chain::chain_response resp;
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
+
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving VHP balance: ${e}", ("e", resp.error().message()) );
+   KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when VHP balance: ${r}", ("r", resp) );
+
+   contracts::token::decimals_result decimals;
+   KOINOS_ASSERT( decimals.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", decimals.GetTypeName()) );
+
+   return decimals.value();
+}
+
 contracts::pob::metadata pob_producer::get_metadata()
 {
    rpc::chain::chain_request req;
@@ -181,6 +223,27 @@ contracts::pob::metadata pob_producer::get_metadata()
    return meta.value();
 }
 
+contracts::pob::consensus_parameters pob_producer::get_consensus_parameters()
+{
+   rpc::chain::chain_request req;
+   auto read_contract = req.mutable_read_contract();
+   read_contract->set_contract_id( _pob_contract_id );
+   read_contract->set_entry_point( _get_consensus_parameters_entry_point );
+
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
+
+   rpc::chain::chain_response resp;
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
+
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving metadata from the pob contract: ${e}", ("e", resp.error().message()) );
+   KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when retrieving metadata: ${r}", ("r", resp) );
+
+   contracts::pob::get_consensus_parameters_result params;
+   KOINOS_ASSERT( params.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", params.GetTypeName()) );
+
+   return params.value();
+}
+
 bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target )
 {
    if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance < target )
@@ -189,7 +252,7 @@ bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_b
    return false;
 }
 
-void pob_producer::query( const boost::system::error_code& ec )
+void pob_producer::query_production_data( const boost::system::error_code& ec )
 {
    if ( ec == boost::asio::error::operation_aborted )
       return;
@@ -206,8 +269,53 @@ void pob_producer::query( const boost::system::error_code& ec )
    {
       LOG(warning) << "Failed querying chain, " << e.what() << ", retrying in 5s...";
       _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
-      _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+      _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
    }
+}
+
+void pob_producer::query_auxiliary_data( const boost::system::error_code& ec )
+{
+   if ( ec == boost::asio::error::operation_aborted )
+      return;
+
+   std::lock_guard< std::mutex > lock( _mutex );
+
+   try
+   {
+      next_auxiliary_bundle();
+      _production_timer.expires_at( std::chrono::system_clock::now() );
+      _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
+   }
+   catch ( const std::exception& e )
+   {
+      LOG(warning) << "Failed querying auxiliary data, " << e.what() << ", retrying in 5s...";
+      _production_timer.expires_at( std::chrono::system_clock::now() + 5s );
+      _production_timer.async_wait( boost::bind( &pob_producer::query_auxiliary_data, this, boost::asio::placeholders::error ) );
+   }
+}
+
+void pob_producer::next_auxiliary_bundle()
+{
+   auto consensus_params = get_consensus_parameters();
+   auto vhp_decimals = get_vhp_decimals();
+   auto vhp_symbol = get_vhp_symbol();
+
+   constexpr uint32_t max_pow10 = 10;
+
+   KOINOS_ASSERT( vhp_decimals <= max_pow10, out_of_bounds_failure, "VHP decimals would exceed static array at index ${i}", ("i", vhp_decimals) );
+
+   static uint32_t pow10[ max_pow10 ] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
+
+   _auxiliary_data = burn_auxiliary_bundle {
+      .vhp_symbol = vhp_symbol,
+      .vhp_precision = pow10[ vhp_decimals ],
+      .target_block_interval = consensus_params.target_block_interval(),
+      .quantum_length = consensus_params.quantum_length(),
+      .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length()
+   };
+
+   LOG(info) << "Target block interval: " << _auxiliary_data->target_block_interval << "ms";
+   LOG(info) << "Quantum length: " << _auxiliary_data->quantum_length << "ms";
 }
 
 std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
@@ -221,11 +329,15 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
 
    auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
    uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
-   auto vhp = difficulty / 300;
+   auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
    LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
-   LOG(info) << "Estimated total VHP Producing: " << std::setfill( '0' ) << std::setw( 1 ) << vhp / 100000000 << "." << std::setw( 8 ) << vhp % 100000000 << " VHP";
-   LOG(info) << "Producing with " << std::setfill( '0' ) << std::setw( 1 ) << pb->vhp_balance / 100000000 << "." << std::setw( 8 ) << pb->vhp_balance % 100000000 << " VHP";
+
+   LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
+             << std::setw( 1 ) << vhp / _auxiliary_data->vhp_precision << "." << std::setw( 8 ) << vhp % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
+
+   LOG(info) << "Producing with " << std::setfill( '0' ) << std::setw( 1 ) << pb->vhp_balance / _auxiliary_data->vhp_precision
+             << "." << std::setw( 8 ) << pb->vhp_balance % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
 
    return pb;
 }
@@ -236,12 +348,12 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
 
    if ( bam.head() )
    {
-      LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
-
       std::lock_guard< std::mutex > lock( _mutex );
 
+      LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
+
       _production_timer.expires_at( std::chrono::system_clock::now() );
-      _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+      _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
    }
 }
 
@@ -250,11 +362,13 @@ void pob_producer::commence()
    std::lock_guard< std::mutex > lock( _mutex );
 
    _production_timer.expires_at( std::chrono::system_clock::now() );
-   _production_timer.async_wait( boost::bind( &pob_producer::query, this, boost::asio::placeholders::error ) );
+   _production_timer.async_wait( boost::bind( &pob_producer::query_auxiliary_data, this, boost::asio::placeholders::error ) );
 }
 
 void pob_producer::halt()
 {
+   std::lock_guard< std::mutex > lock( _mutex );
+
    _production_timer.cancel();
 }
 
