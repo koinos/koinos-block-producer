@@ -94,7 +94,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
       if ( difficulty_met( proof_hash, pb->vhp_balance, target ) )
       {
-         LOG(info) << "Burn difficulty met";
+         LOG(info) << "Burn difficulty met at quantum " << timestamp;
 
          if ( submit_block( pb->block ) )
          {
@@ -111,8 +111,6 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
       }
       else
       {
-         LOG(info) << "Burn difficulty not met";
-
          pb->time_quantum = next_time_quantum( pb->time_quantum );
 
          _production_timer.expires_at( std::chrono::system_clock::now() );
@@ -221,6 +219,14 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->vhp_balance  = get_vhp_balance();
    pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
 
+   auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
+   uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
+   auto vhp = difficulty / 300;
+
+   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
+   LOG(info) << "Estimated total VHP Producing: " << std::setfill( '0' ) << std::setw( 1 ) << vhp / 100000000 << "." << std::setw( 8 ) << vhp % 100000000 << " VHP";
+   LOG(info) << "Producing with " << std::setfill( '0' ) << std::setw( 1 ) << pb->vhp_balance / 100000000 << "." << std::setw( 8 ) << pb->vhp_balance % 100000000 << " VHP";
+
    return pb;
 }
 
@@ -230,7 +236,7 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
 
    if ( bam.head() )
    {
-      LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height();
+      LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
 
       std::lock_guard< std::mutex > lock( _mutex );
 
