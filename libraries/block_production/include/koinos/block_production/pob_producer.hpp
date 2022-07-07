@@ -80,7 +80,6 @@ private:
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );
    bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target );
 
-   void fill_burn_parameters();
    uint64_t get_vhp_balance();
    uint32_t get_vhp_decimals();
    std::string get_vhp_symbol();
