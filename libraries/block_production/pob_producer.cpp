@@ -352,8 +352,11 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
 
       LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
 
-      _production_timer.expires_at( std::chrono::system_clock::now() );
-      _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
+      if ( _auxiliary_data.has_value() )
+      {
+         _production_timer.expires_at( std::chrono::system_clock::now() );
+         _production_timer.async_wait( boost::bind( &pob_producer::query_production_data, this, boost::asio::placeholders::error ) );
+      }
    }
 }
 
