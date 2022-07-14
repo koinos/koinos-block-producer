@@ -3,6 +3,7 @@ file(GLOB HEADERS "include/koinos/block_production/*.hpp")
 add_library(koinos_block_production
             block_producer.cpp
             federated_producer.cpp
+            pob_producer.cpp
             pow_producer.cpp
             ${HEADERS})
 target_link_libraries(koinos_block_production Koinos::exception Koinos::crypto Koinos::proto Koinos::log Koinos::mq)

@@ -20,6 +20,8 @@ KOINOS_DECLARE_EXCEPTION( block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( rpc_failure, block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( timestamp_overflow, block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( nonce_failure, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( deserialization_failure, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( out_of_bounds_failure, block_production_exception );
 
 class block_producer
 {
@@ -38,9 +40,10 @@ public:
    virtual ~block_producer();
 
    virtual void on_gossip_status( const broadcast::gossip_status& gs );
-   virtual void on_block_accept( const protocol::block& b );
+   virtual void on_block_accept( const broadcast::block_accepted& bam );
 
 protected:
+   protocol::block next_block( std::string signer );
    protocol::block next_block();
 
    // Submits a block, returns true if block needs to be resubmitted

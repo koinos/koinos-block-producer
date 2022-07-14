@@ -98,6 +98,11 @@ void block_producer::on_run( const boost::system::error_code& ec )
 
 protocol::block block_producer::next_block()
 {
+   return next_block( _signing_key.get_public_key().to_address_bytes() );
+}
+
+protocol::block block_producer::next_block( std::string signer )
+{
    protocol::block b;
 
    rpc::chain::chain_request req;
@@ -108,19 +113,16 @@ protocol::block block_producer::next_block()
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
 
-   if ( resp.has_error() )
-   {
-      KOINOS_THROW( rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
-   }
-
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "unable to retrieve head info, ${e}", ("e", resp.error().message()) );
    KOINOS_ASSERT( resp.has_get_head_info(), rpc_failure, "unexpected RPC response when retrieving head info: ${r}", ("r", resp) );
+
    const auto& head_info = resp.get_head_info();
 
    b.mutable_header()->set_previous( head_info.head_topology().id() );
    b.mutable_header()->set_height( head_info.head_topology().height() + 1 );
-   b.mutable_header()->set_timestamp( now() );
+   b.mutable_header()->set_timestamp( std::max( now(), head_info.head_block_time() ) );
    b.mutable_header()->set_previous_state_merkle_root( head_info.head_state_merkle_root() );
-   b.mutable_header()->set_signer( _signing_key.get_public_key().to_address_bytes() );
+   b.mutable_header()->set_signer( signer );
    b.mutable_header()->mutable_approved_proposals()->Add( _approved_proposals.begin(), _approved_proposals.end() );
 
    fill_block( b );
@@ -322,7 +324,7 @@ uint64_t block_producer::now()
    return last_block_time > now ? last_block_time : now;
 }
 
-void block_producer::on_block_accept( const protocol::block& b ) { }
+void block_producer::on_block_accept( const broadcast::block_accepted& bam ) { }
 
 void block_producer::on_gossip_status( const broadcast::gossip_status& gs )
 {

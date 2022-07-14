@@ -12,6 +12,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <koinos/block_production/federated_producer.hpp>
+#include <koinos/block_production/pob_producer.hpp>
 #include <koinos/block_production/pow_producer.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/log.hpp>
@@ -28,6 +29,7 @@
 
 #define FEDERATED_ALGORITHM                "federated"
 #define POW_ALGORITHM                      "pow"
+#define POB_ALGORITHM                      "pob"
 
 #define HELP_OPTION                        "help"
 #define BASEDIR_OPTION                     "basedir"
@@ -43,6 +45,8 @@
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
+#define POB_CONTRACT_ID_OPTION             "pob-contract-id"
+#define VHP_CONTRACT_ID_OPTION             "vhp-contract-id"
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
@@ -52,6 +56,7 @@
 #define MAX_INCLUSION_ATTEMPTS_OPTION      "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT     uint64_t( 2000 )
 #define APPROVE_PROPOSALS_OPTION           "approve-proposals"
+#define PRODUCER_ADDRESS_OPTION            "producer"
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
@@ -85,10 +90,13 @@ int main( int argc, char** argv )
          (WORK_GROUPS_OPTION               ",w", program_options::value< uint64_t    >(), "The number of worker groups")
          (PRIVATE_KEY_FILE_OPTION          ",p", program_options::value< std::string >(), "The private key file")
          (POW_CONTRACT_ID_OPTION           ",c", program_options::value< std::string >(), "The PoW contract ID")
+         (POB_CONTRACT_ID_OPTION           ",b", program_options::value< std::string >(), "The PoB contract ID")
+         (VHP_CONTRACT_ID_OPTION           ",e", program_options::value< std::string >(), "The VHP contract ID")
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
          (GOSSIP_PRODUCTION_OPTION             , program_options::value< bool        >(), "Use p2p gossip status to determine block production")
+         (PRODUCER_ADDRESS_OPTION          ",f", program_options::value< std::string >(), "The beneficiary address used during PoB production")
          (APPROVE_PROPOSALS_OPTION         ",v", program_options::value< std::vector< std::string > >()->multitoken(), "A list a proposal to approve when producing a block");
 
       program_options::variables_map args;
@@ -129,7 +137,10 @@ int main( int argc, char** argv )
       auto work_groups  = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
       auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
       auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto pob_id       = util::get_option< std::string >( POB_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto vhp_id       = util::get_option< std::string >( VHP_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
       auto rcs_lbound   = util::get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto producer_addr     = util::get_option< std::string >( PRODUCER_ADDRESS_OPTION, "", args, block_producer_config, global_config );
       auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
@@ -251,9 +262,41 @@ int main( int argc, char** argv )
             approved_proposals
          );
       }
+      else if ( algorithm == POB_ALGORITHM )
+      {
+         LOG(info) << "Using " << POB_ALGORITHM << " algorithm";
+
+         KOINOS_ASSERT( !pob_id.empty(), invalid_argument, "A proof of burn contract ID must be provided" );
+         KOINOS_ASSERT( !vhp_id.empty(), invalid_argument, "A VHP contract ID must be provided" );
+         KOINOS_ASSERT( !producer_addr.empty(), invalid_argument, "A producer address must be provided");
+
+         auto pob_address = util::from_base58< std::string >( pob_id );
+         auto vhp_address = util::from_base58< std::string >( vhp_id );
+         auto producer_address = util::from_base58< std::string >( producer_addr );
+
+         producer = std::make_unique< block_production::pob_producer >(
+            signing_key,
+            main_context,
+            work_context,
+            client,
+            rcs_lbound,
+            rcs_ubound,
+            max_attempts,
+            gossip_production,
+            approved_proposals,
+            pob_address,
+            vhp_address,
+            producer_address
+         );
+
+         LOG(info) << "Using " << work_groups << " work groups";
+      }
       else if ( algorithm == POW_ALGORITHM )
       {
          LOG(info) << "Using " << POW_ALGORITHM << " algorithm";
+
+         KOINOS_ASSERT( !pow_id.empty(), invalid_argument, "A proof of work contract ID must be provided" );
+
          auto pow_address = util::from_base58< std::string >( pow_id );
 
          producer = std::make_unique< block_production::pow_producer >(
@@ -285,7 +328,7 @@ int main( int argc, char** argv )
             {
                broadcast::block_accepted bam;
                bam.ParseFromString( msg );
-               producer->on_block_accept( bam.block() );
+               producer->on_block_accept( bam );
             }
             catch ( const boost::exception& e )
             {
