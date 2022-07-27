@@ -51,7 +51,9 @@ pob_producer::pob_producer(
       _pob_contract_id( pob_contract_id ),
       _vhp_contract_id( vhp_contract_id ),
       _producer_address( producer_address ),
-      _production_timer( _production_context ) {}
+      _production_timer( _production_context ) {
+         LOG(info) << "Producing with public key: " << util::to_hex( signing_key.get_public_key().serialize() );
+      }
 
 pob_producer::~pob_producer() = default;
 
@@ -90,7 +92,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
       pb->block.set_signature( util::converter::as< std::string >( signature_data ) );
 
-      uint256_t target = std::numeric_limits< uint256_t >::max() / util::converter::to< uint256_t >( pb->metadata.difficulty() );
+      auto target = std::numeric_limits< uint128_t >::max() / util::converter::to< uint128_t >( pb->metadata.difficulty() );
 
       if ( difficulty_met( proof_hash, pb->vhp_balance, target ) )
       {
@@ -244,9 +246,9 @@ contracts::pob::consensus_parameters pob_producer::get_consensus_parameters()
    return params.value();
 }
 
-bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target )
+bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint128_t target )
 {
-   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance < target )
+   if ( ( util::converter::to< uint256_t >( hash.digest() ) >> 128 ) / vhp_balance < target )
       return true;
 
    return false;
@@ -327,11 +329,12 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->vhp_balance  = get_vhp_balance();
    pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
 
-   auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
-   uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
+   auto difficulty = util::converter::to< uint128_t >( pb->metadata.difficulty() );
+   uint128_t target = std::numeric_limits< uint128_t >::max() / difficulty;
    auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
-   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
+   LOG(info) << difficulty;
+   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 32 ) << std::hex << target;
 
    LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
              << std::setw( 1 ) << vhp / _auxiliary_data->vhp_precision << "." << std::setw( 8 ) << vhp % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
