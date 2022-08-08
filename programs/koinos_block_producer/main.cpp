@@ -228,9 +228,6 @@ int main( int argc, char** argv )
       threads.emplace_back( [&]() { request_context.run(); } );
       threads.emplace_back( [&]() { request_context.run(); } );
 
-      for ( std::size_t i = 0; i < jobs + 1; i++ )
-         threads.emplace_back( [&]() { work_context.run(); } );
-
       LOG(info) << "Connecting AMQP client...";
       client->connect( amqp_url );
       LOG(info) << "Established AMQP client connection to the server";
@@ -319,6 +316,9 @@ int main( int argc, char** argv )
       {
          KOINOS_THROW( invalid_argument, "unrecognized consensus algorithm" );
       }
+
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
+         threads.emplace_back( [&]() { work_context.run(); } );
 
       reqhandler.add_broadcast_handler(
          "koinos.block.accept",

@@ -51,9 +51,10 @@ pob_producer::pob_producer(
       _pob_contract_id( pob_contract_id ),
       _vhp_contract_id( vhp_contract_id ),
       _producer_address( producer_address ),
-      _production_timer( _production_context ) {
-         LOG(info) << "Producing with public key: " << util::to_hex( signing_key.get_public_key().serialize() );
-      }
+      _production_timer( _production_context )
+{
+   LOG(info) << "Producing with public key: " << util::to_hex( signing_key.get_public_key().serialize() );
+}
 
 pob_producer::~pob_producer() = default;
 
