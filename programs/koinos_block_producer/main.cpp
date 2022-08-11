@@ -193,7 +193,7 @@ int main( int argc, char** argv )
       pubfile.close();
 
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
-      LOG(info) << "Public key: " << util::to_hex( signing_key.get_public_key().serialize() );
+      LOG(info) << "Public key: " << util::to_base64( signing_key.get_public_key().serialize() );
       if ( !producer_addr.empty() )
          LOG(info) << "Producer address: " << producer_addr;
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
