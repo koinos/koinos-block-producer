@@ -21,6 +21,7 @@
 #include <koinos/rpc/chain/chain_rpc.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util/base58.hpp>
+#include <koinos/util/base64.hpp>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/hex.hpp>
 #include <koinos/util/options.hpp>
@@ -60,6 +61,7 @@
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( unable_to_write, service_exception );
 
 using namespace boost;
 using namespace koinos;
@@ -182,7 +184,18 @@ int main( int argc, char** argv )
          KOINOS_THROW( invalid_argument, "unable to parse private key file at ${f}, ${r}", ("f", private_key_file)("r", e.what()) );
       }
 
+      std::filesystem::path public_key_file = basedir / util::service::block_producer / "public.key";
+
+      std::ofstream pubfile;
+      pubfile.open( public_key_file );
+      KOINOS_ASSERT( pubfile.is_open(), unable_to_write, "unable to write public key file to disk at ${f}", ("f", public_key_file) );
+      pubfile << util::to_base64( signing_key.get_public_key().serialize() ) << std::endl;
+      pubfile.close();
+
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
+      LOG(info) << "Public key: " << util::to_hex( signing_key.get_public_key().serialize() );
+      if ( !producer_addr.empty() )
+         LOG(info) << "Producer address: " << producer_addr;
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
