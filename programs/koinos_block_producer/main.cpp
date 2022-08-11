@@ -146,7 +146,7 @@ int main( int argc, char** argv )
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
       auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
 
-      initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
+      initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer / "logs" );
 
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
