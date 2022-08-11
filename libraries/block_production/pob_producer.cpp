@@ -304,7 +304,7 @@ void pob_producer::next_auxiliary_bundle()
    auto vhp_symbol = get_vhp_symbol();
 
    KOINOS_ASSERT( consensus_params.target_block_interval() > 0, invalid_parameter, "expected target block interval greater than 0, was ${x}", ("x", consensus_params.target_block_interval()) );
-   KOINOS_ASSERT( consensus_params.quantum_length() > 0, invalid_parameter, "expected quantum length greater than 0, was ${x}", ("x", consensus_params.target_block_interval()) );
+   KOINOS_ASSERT( consensus_params.quantum_length() > 0, invalid_parameter, "expected quantum length greater than 0, was ${x}", ("x", consensus_params.quantum_length()) );
 
    constexpr uint32_t max_pow10 = 10;
 
