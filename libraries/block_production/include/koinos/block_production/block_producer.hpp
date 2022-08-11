@@ -22,6 +22,7 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( timestamp_overflow, block_production_exception
 KOINOS_DECLARE_DERIVED_EXCEPTION( nonce_failure, block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( deserialization_failure, block_production_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( out_of_bounds_failure, block_production_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_parameter, block_production_exception );
 
 class block_producer
 {

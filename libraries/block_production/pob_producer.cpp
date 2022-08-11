@@ -52,9 +52,7 @@ pob_producer::pob_producer(
       _vhp_contract_id( vhp_contract_id ),
       _producer_address( producer_address ),
       _production_timer( _production_context )
-{
-   LOG(info) << "Producing with public key: " << util::to_hex( signing_key.get_public_key().serialize() );
-}
+{}
 
 pob_producer::~pob_producer() = default;
 
@@ -303,8 +301,14 @@ void pob_producer::next_auxiliary_bundle()
    auto vhp_decimals = get_vhp_decimals();
    auto vhp_symbol = get_vhp_symbol();
 
+   KOINOS_ASSERT( consensus_params.target_block_interval() > 0, invalid_parameter, "expected target block interval greater than 0, was ${x}", ("x", consensus_params.target_block_interval()) );
+   KOINOS_ASSERT( consensus_params.quantum_length() > 0, invalid_parameter, "expected quantum length greater than 0, was ${x}", ("x", consensus_params.quantum_length()) );
+
    constexpr uint32_t max_pow10 = 10;
 
+   KOINOS_ASSERT( !vhp_symbol.empty(), invalid_parameter, "expected VHP symbol to have a value, was empty" );
+
+   KOINOS_ASSERT( vhp_decimals > 0, invalid_parameter, "expected VHP decimals greater than 0, was ${x}", ("x", vhp_decimals) );
    KOINOS_ASSERT( vhp_decimals < max_pow10, out_of_bounds_failure, "VHP decimals would exceed static array at index ${i}", ("i", vhp_decimals) );
 
    static uint32_t pow10[ max_pow10 ] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
@@ -316,6 +320,8 @@ void pob_producer::next_auxiliary_bundle()
       .quantum_length = consensus_params.quantum_length(),
       .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length()
    };
+
+   KOINOS_ASSERT( _auxiliary_data->quanta_per_block_interval > 0, invalid_parameter, "expected quanta per block interval greater than 0, was ${x}", ("x", _auxiliary_data->quanta_per_block_interval) );
 
    LOG(info) << "Target block interval: " << _auxiliary_data->target_block_interval << "ms";
    LOG(info) << "Quantum length: " << _auxiliary_data->quantum_length << "ms";
@@ -330,11 +336,14 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->vhp_balance  = get_vhp_balance();
    pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
 
+   KOINOS_ASSERT( pb->vhp_balance > 0, invalid_parameter, "expected VHP balance greater than 0, was ${x}", ("x", pb->vhp_balance) );
+
    auto difficulty = util::converter::to< uint128_t >( pb->metadata.difficulty() );
+   KOINOS_ASSERT( difficulty > 0, invalid_parameter, "expected difficulty greater than 0, was ${x}", ("x", difficulty) );
+
    uint128_t target = std::numeric_limits< uint128_t >::max() / difficulty;
    auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
-   LOG(info) << difficulty;
    LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 32 ) << std::hex << target;
 
    LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
