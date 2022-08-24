@@ -363,7 +363,7 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
    {
       std::lock_guard< std::mutex > lock( _mutex );
 
-      if ( bam.block().header().signer() != _producer_address )
+      if ( bam.live() && bam.block().header().signer() != _producer_address )
          LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
 
       if ( _auxiliary_data.has_value() )
