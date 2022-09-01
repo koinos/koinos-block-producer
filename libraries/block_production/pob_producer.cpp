@@ -13,6 +13,7 @@
 #include <koinos/block_production/pob_producer.hpp>
 #include <koinos/contracts/pow/pow.pb.h>
 #include <koinos/contracts/token/token.pb.h>
+#include <koinos/contracts/vhp/vhp.pb.h>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
@@ -140,9 +141,9 @@ uint64_t pob_producer::get_vhp_balance()
    rpc::chain::chain_request req;
    auto read_contract = req.mutable_read_contract();
    read_contract->set_contract_id( _vhp_contract_id );
-   read_contract->set_entry_point( _balance_of_entry_point );
+   read_contract->set_entry_point( _effective_balance_of_entry_point );
 
-   contracts::token::balance_of_arguments args;
+   contracts::vhp::effective_balance_of_arguments args;
    args.set_owner( _producer_address );
 
    read_contract->set_args( util::converter::as< std::string >( args ) );
@@ -155,7 +156,7 @@ uint64_t pob_producer::get_vhp_balance()
    KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving VHP balance: ${e}", ("e", resp.error().message()) );
    KOINOS_ASSERT( resp.has_read_contract(), rpc_failure, "unexpected RPC response when VHP balance: ${r}", ("r", resp) );
 
-   contracts::token::balance_of_result balance_result;
+   contracts::vhp::effective_balance_of_result balance_result;
    KOINOS_ASSERT( balance_result.ParseFromString( resp.read_contract().result() ), deserialization_failure, "unable to deserialize ${t}", ("t", balance_result.GetTypeName()) );
 
    return balance_result.value();
