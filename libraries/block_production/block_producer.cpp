@@ -319,12 +319,16 @@ uint64_t block_producer::now()
       std::chrono::system_clock::now().time_since_epoch()
    ).count() );
 
-   uint64_t last_block_time = _last_block_time;
+   uint64_t last_block_time = _head_block_time.load();
 
    return last_block_time > now ? last_block_time : now;
 }
 
-void block_producer::on_block_accept( const broadcast::block_accepted& bam ) { }
+void block_producer::on_block_accept( const broadcast::block_accepted& bam )
+{
+   if ( bam.head() )
+      _head_block_time.store( bam.block().header().timestamp() );
+}
 
 void block_producer::on_gossip_status( const broadcast::gossip_status& gs )
 {

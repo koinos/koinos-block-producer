@@ -128,7 +128,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
 std::chrono::system_clock::time_point pob_producer::next_time_quantum( std::chrono::system_clock::time_point tp )
 {
-   auto time_point = std::max( tp, std::chrono::system_clock::now() );
+   auto time_point = std::max( tp, std::chrono::system_clock::time_point{ std::chrono::milliseconds{ _head_block_time.load() } } );
    auto time_ms    = std::chrono::duration_cast< std::chrono::milliseconds >( time_point.time_since_epoch() ).count();
    auto remainder  = time_ms % 10;
    time_ms        += 10 - remainder;

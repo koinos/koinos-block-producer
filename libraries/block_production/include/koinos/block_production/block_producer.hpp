@@ -58,7 +58,7 @@ protected:
    boost::asio::signal_set           _signals;
    std::shared_ptr< mq::client >     _rpc_client;
    const crypto::private_key         _signing_key;
-   std::atomic< int64_t >            _last_block_time = 0;
+   std::atomic< int64_t >            _head_block_time = 0;
    std::atomic< bool >               _halted = true;
    const uint64_t                    _resources_lower_bound;
    const uint64_t                    _resources_upper_bound;
