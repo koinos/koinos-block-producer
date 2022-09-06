@@ -328,10 +328,11 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->vhp_balance  = get_vhp_balance();
 
    // Calculate the next valid time quantum
-   auto next_time = pb->block.header().timestamp();
-   if ( _auxiliary_data->minimum_block_time )
-      next_time += _auxiliary_data->minimum_block_time;
-   pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ next_time } } );
+   auto next_time = pb->block.header().timestamp() + _auxiliary_data->minimum_block_time;
+   if ( auto remainder = next_time % 10; remainder || !_auxiliary_data->minimum_block_time )
+      next_time += 10 - remainder;
+      
+   pb->time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ next_time } };
 
    auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
    uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
