@@ -21,6 +21,7 @@
 #include <koinos/rpc/chain/chain_rpc.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util/base58.hpp>
+#include <koinos/util/base64.hpp>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/hex.hpp>
 #include <koinos/util/options.hpp>
@@ -60,6 +61,7 @@
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( unable_to_write, service_exception );
 
 using namespace boost;
 using namespace koinos;
@@ -146,7 +148,7 @@ int main( int argc, char** argv )
       auto gossip_production = util::get_option< bool        >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
       auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
 
-      initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer );
+      initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer / "logs" );
 
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
@@ -182,7 +184,18 @@ int main( int argc, char** argv )
          KOINOS_THROW( invalid_argument, "unable to parse private key file at ${f}, ${r}", ("f", private_key_file)("r", e.what()) );
       }
 
+      std::filesystem::path public_key_file = basedir / util::service::block_producer / "public.key";
+
+      std::ofstream pubfile;
+      pubfile.open( public_key_file );
+      KOINOS_ASSERT( pubfile.is_open(), unable_to_write, "unable to write public key file to disk at ${f}", ("f", public_key_file) );
+      pubfile << util::to_base64( signing_key.get_public_key().serialize() ) << std::endl;
+      pubfile.close();
+
       LOG(info) << "Public address: " << util::to_base58( signing_key.get_public_key().to_address_bytes() );
+      LOG(info) << "Public key: " << util::to_base64( signing_key.get_public_key().serialize() );
+      if ( !producer_addr.empty() )
+         LOG(info) << "Producer address: " << producer_addr;
       LOG(info) << "Block resource utilization lower bound: " << rcs_lbound << "%, upper bound: " << rcs_ubound << "%";
       LOG(info) << "Maximum transaction inclusion attempts per block: " << max_attempts;
 
@@ -227,9 +240,6 @@ int main( int argc, char** argv )
       threads.emplace_back( [&]() { client_context.run(); } );
       threads.emplace_back( [&]() { request_context.run(); } );
       threads.emplace_back( [&]() { request_context.run(); } );
-
-      for ( std::size_t i = 0; i < jobs + 1; i++ )
-         threads.emplace_back( [&]() { work_context.run(); } );
 
       LOG(info) << "Connecting AMQP client...";
       client->connect( amqp_url );
@@ -319,6 +329,9 @@ int main( int argc, char** argv )
       {
          KOINOS_THROW( invalid_argument, "unrecognized consensus algorithm" );
       }
+
+      for ( std::size_t i = 0; i < jobs + 1; i++ )
+         threads.emplace_back( [&]() { work_context.run(); } );
 
       reqhandler.add_broadcast_handler(
          "koinos.block.accept",

@@ -17,8 +17,8 @@
 
 namespace koinos::block_production {
 
-using boost::multiprecision::uint512_t;
 using boost::multiprecision::uint256_t;
+using boost::multiprecision::uint128_t;
 
 using address_type = std::string;
 
@@ -79,7 +79,7 @@ private:
    void next_auxiliary_bundle();
    std::shared_ptr< burn_production_bundle > next_bundle();
    std::chrono::system_clock::time_point next_time_quantum( std::chrono::system_clock::time_point time );
-   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target );
+   bool difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint128_t target );
 
    uint64_t get_vhp_balance();
    uint32_t get_vhp_decimals();

@@ -51,7 +51,8 @@ pob_producer::pob_producer(
       _pob_contract_id( pob_contract_id ),
       _vhp_contract_id( vhp_contract_id ),
       _producer_address( producer_address ),
-      _production_timer( _production_context ) {}
+      _production_timer( _production_context )
+{}
 
 pob_producer::~pob_producer() = default;
 
@@ -90,7 +91,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
       pb->block.set_signature( util::converter::as< std::string >( signature_data ) );
 
-      uint256_t target = std::numeric_limits< uint256_t >::max() / util::converter::to< uint256_t >( pb->metadata.difficulty() );
+      auto target = std::numeric_limits< uint128_t >::max() / util::converter::to< uint128_t >( pb->metadata.difficulty() );
 
       if ( difficulty_met( proof_hash, pb->vhp_balance, target ) )
       {
@@ -244,9 +245,9 @@ contracts::pob::consensus_parameters pob_producer::get_consensus_parameters()
    return params.value();
 }
 
-bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint256_t target )
+bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint128_t target )
 {
-   if ( util::converter::to< uint256_t >( hash.digest() ) / vhp_balance < target )
+   if ( ( util::converter::to< uint256_t >( hash.digest() ) >> 128 ) / vhp_balance < target )
       return true;
 
    return false;
@@ -300,8 +301,14 @@ void pob_producer::next_auxiliary_bundle()
    auto vhp_decimals = get_vhp_decimals();
    auto vhp_symbol = get_vhp_symbol();
 
+   KOINOS_ASSERT( consensus_params.target_block_interval() > 0, invalid_parameter, "expected target block interval greater than 0, was ${x}", ("x", consensus_params.target_block_interval()) );
+   KOINOS_ASSERT( consensus_params.quantum_length() > 0, invalid_parameter, "expected quantum length greater than 0, was ${x}", ("x", consensus_params.quantum_length()) );
+
    constexpr uint32_t max_pow10 = 10;
 
+   KOINOS_ASSERT( !vhp_symbol.empty(), invalid_parameter, "expected VHP symbol to have a value, was empty" );
+
+   KOINOS_ASSERT( vhp_decimals > 0, invalid_parameter, "expected VHP decimals greater than 0, was ${x}", ("x", vhp_decimals) );
    KOINOS_ASSERT( vhp_decimals < max_pow10, out_of_bounds_failure, "VHP decimals would exceed static array at index ${i}", ("i", vhp_decimals) );
 
    static uint32_t pow10[ max_pow10 ] = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
@@ -314,6 +321,8 @@ void pob_producer::next_auxiliary_bundle()
       .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length(),
       .minimum_block_time = consensus_params.minimum_block_time(),
    };
+
+   KOINOS_ASSERT( _auxiliary_data->quanta_per_block_interval > 0, invalid_parameter, "expected quanta per block interval greater than 0, was ${x}", ("x", _auxiliary_data->quanta_per_block_interval) );
 
    LOG(info) << "Target block interval: " << _auxiliary_data->target_block_interval << "ms";
    LOG(info) << "Quantum length: " << _auxiliary_data->quantum_length << "ms";
@@ -334,11 +343,15 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
       
    pb->time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ next_time } };
 
-   auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
-   uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
+   KOINOS_ASSERT( pb->vhp_balance > 0, invalid_parameter, "expected VHP balance greater than 0, was ${x}", ("x", pb->vhp_balance) );
+
+   auto difficulty = util::converter::to< uint128_t >( pb->metadata.difficulty() );
+   KOINOS_ASSERT( difficulty > 0, invalid_parameter, "expected difficulty greater than 0, was ${x}", ("x", difficulty) );
+
+   uint128_t target = std::numeric_limits< uint128_t >::max() / difficulty;
    auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
-   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 64 ) << std::hex << target;
+   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 32 ) << std::hex << target;
 
    LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
              << std::setw( 1 ) << vhp / _auxiliary_data->vhp_precision << "." << std::setw( 8 ) << vhp % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
@@ -357,7 +370,7 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
    {
       std::lock_guard< std::mutex > lock( _mutex );
 
-      if ( bam.block().header().signer() != _producer_address )
+      if ( bam.live() && bam.block().header().signer() != _producer_address )
          LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
 
       if ( _auxiliary_data.has_value() )
