@@ -311,7 +311,8 @@ void pob_producer::next_auxiliary_bundle()
       .vhp_precision = pow10[ vhp_decimals ],
       .target_block_interval = consensus_params.target_block_interval(),
       .quantum_length = consensus_params.quantum_length(),
-      .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length()
+      .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length(),
+      .minimum_block_time = consensus_params.minimum_block_time(),
    };
 
    LOG(info) << "Target block interval: " << _auxiliary_data->target_block_interval << "ms";
@@ -325,7 +326,12 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->block        = next_block( _producer_address );
    pb->metadata     = get_metadata();
    pb->vhp_balance  = get_vhp_balance();
-   pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
+
+   // Calculate the next valid time quantum
+   auto next_time = pb->block.header().timestamp();
+   if ( _auxiliary_data->minimum_block_time )
+      next_time += _auxiliary_data->minimum_block_time;
+   pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ next_time } } );
 
    auto difficulty = util::converter::to< uint256_t >( pb->metadata.difficulty() );
    uint256_t target = std::numeric_limits< uint256_t >::max() / difficulty;
