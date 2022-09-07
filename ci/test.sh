@@ -17,5 +17,5 @@ if ! [[ -z $BUILD_DOCKER ]]; then
 
    cd koinos-integration-tests
    go get ./...
-   #./run.sh
+   ./run.sh
 fi
