@@ -318,7 +318,8 @@ void pob_producer::next_auxiliary_bundle()
       .vhp_precision = pow10[ vhp_decimals ],
       .target_block_interval = consensus_params.target_block_interval(),
       .quantum_length = consensus_params.quantum_length(),
-      .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length()
+      .quanta_per_block_interval = consensus_params.target_block_interval() / consensus_params.quantum_length(),
+      .minimum_block_time = consensus_params.minimum_block_time(),
    };
 
    KOINOS_ASSERT( _auxiliary_data->quanta_per_block_interval > 0, invalid_parameter, "expected quanta per block interval greater than 0, was ${x}", ("x", _auxiliary_data->quanta_per_block_interval) );
@@ -334,7 +335,13 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    pb->block        = next_block( _producer_address );
    pb->metadata     = get_metadata();
    pb->vhp_balance  = get_vhp_balance();
-   pb->time_quantum = next_time_quantum( std::chrono::system_clock::time_point{ std::chrono::milliseconds{ pb->block.header().timestamp() } } );
+
+   // Calculate the next valid time quantum
+   auto next_time = pb->block.header().timestamp() + _auxiliary_data->minimum_block_time;
+   if ( auto remainder = next_time % 10; remainder || !_auxiliary_data->minimum_block_time )
+      next_time += 10 - remainder;
+      
+   pb->time_quantum = std::chrono::system_clock::time_point{ std::chrono::milliseconds{ next_time } };
 
    KOINOS_ASSERT( pb->vhp_balance > 0, invalid_parameter, "expected VHP balance greater than 0, was ${x}", ("x", pb->vhp_balance) );
 
