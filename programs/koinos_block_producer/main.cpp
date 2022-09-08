@@ -164,11 +164,20 @@ int main( int argc, char** argv )
       if ( private_key_file.is_relative() )
          private_key_file = basedir / util::service::block_producer / private_key_file;
 
-      KOINOS_ASSERT(
-         std::filesystem::exists( private_key_file ),
-         invalid_argument,
-         "unable to find private key file at: ${loc}", ("loc", private_key_file)
-      );
+      if ( !std::filesystem::exists( private_key_file ) ) {
+         LOG(info) << "Could not find private key file at '"<< private_key_file << "', generating a new key...";
+
+         if ( !std::filesystem::exists( private_key_file.parent_path() ) )
+            std::filesystem::create_directories( private_key_file.parent_path() );
+
+         std::ofstream ofs( private_key_file );
+
+         auto seed = koinos::util::random_alphanumeric( 64 );
+         auto secret = koinos::crypto::hash( koinos::crypto::multicodec::sha2_256, seed );
+         auto private_key = koinos::crypto::private_key::regenerate( secret );
+
+         ofs << private_key.to_wif() << std::endl;
+      }
 
       crypto::private_key signing_key;
 
