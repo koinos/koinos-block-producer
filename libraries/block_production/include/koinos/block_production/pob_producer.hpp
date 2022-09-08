@@ -35,7 +35,6 @@ struct burn_auxiliary_bundle {
    uint32_t target_block_interval;
    uint32_t quantum_length;
    uint32_t quanta_per_block_interval;
-   uint64_t minimum_block_time;
 };
 
 class pob_producer : public block_producer
