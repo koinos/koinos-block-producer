@@ -69,7 +69,7 @@ private:
    const address_type                            _producer_address;
    const uint32_t                                _get_metadata_entry_point = 0xfcf7a68f;
    const uint32_t                                _get_consensus_parameters_entry_point = 0x5fd7ac0f;
-   const uint32_t                                _balance_of_entry_point = 0x5c721497;
+   const uint32_t                                _effective_balance_of_entry_point = 0x629f31e6;
    const uint32_t                                _decimals_entry_point = 0xee80fd2f;
    const uint32_t                                _symbol_entry_point = 0xb76a7ca1;
    std::optional< burn_auxiliary_bundle >        _auxiliary_data;
