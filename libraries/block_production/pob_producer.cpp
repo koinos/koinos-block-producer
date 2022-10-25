@@ -96,7 +96,7 @@ void pob_producer::produce( const boost::system::error_code& ec, std::shared_ptr
 
       if ( difficulty_met( proof_hash, pb->vhp_balance, target ) )
       {
-         LOG(info) << "Burn difficulty met at quantum " << timestamp;
+         LOG(debug) << "Burn difficulty met at quantum " << timestamp;
 
          if ( submit_block( pb->block ) )
          {
@@ -345,13 +345,18 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    uint128_t target = std::numeric_limits< uint128_t >::max() / difficulty;
    auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
-   LOG(info) << "Difficulty target: 0x" << std::setfill( '0' ) << std::setw( 32 ) << std::hex << target;
+   auto now = std::chrono::system_clock::now();
 
-   LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
-             << std::setw( 1 ) << vhp / _auxiliary_data->vhp_precision << "." << std::setw( 8 ) << vhp % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
+   if ( now - _last_vhp_log >= 1min )
+   {
+      LOG(info) << "Estimated total " << _auxiliary_data->vhp_symbol << " producing: " << std::setfill( '0' )
+                << std::setw( 1 ) << vhp / _auxiliary_data->vhp_precision << "." << std::setw( 8 ) << vhp % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
 
-   LOG(info) << "Producing with " << std::setfill( '0' ) << std::setw( 1 ) << pb->vhp_balance / _auxiliary_data->vhp_precision
-             << "." << std::setw( 8 ) << pb->vhp_balance % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
+      LOG(info) << "Producing with " << std::setfill( '0' ) << std::setw( 1 ) << pb->vhp_balance / _auxiliary_data->vhp_precision
+                << "." << std::setw( 8 ) << pb->vhp_balance % _auxiliary_data->vhp_precision << " " << _auxiliary_data->vhp_symbol;
+
+      _last_vhp_log = now;
+   }
 
    return pb;
 }
@@ -365,7 +370,7 @@ void pob_producer::on_block_accept( const broadcast::block_accepted& bam )
       std::lock_guard< std::mutex > lock( _mutex );
 
       if ( bam.live() && bam.block().header().signer() != _producer_address )
-         LOG(info) << "Received a new head block with ID: " << util::to_hex( bam.block().id() ) << ", Height: " << bam.block().header().height() << ", Timestamp: " << bam.block().header().timestamp();
+         LOG(debug) << "Received head block - Height: " << bam.block().header().height() << ", ID: " << util::to_hex( bam.block().id() );
 
       if ( _auxiliary_data.has_value() && !_halted )
       {
