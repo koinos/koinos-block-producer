@@ -74,6 +74,7 @@ private:
    const uint32_t                                _symbol_entry_point = 0xb76a7ca1;
    std::optional< burn_auxiliary_bundle >        _auxiliary_data;
    std::mutex                                    _mutex;
+   std::chrono::system_clock::time_point         _last_vhp_log;
 
    void next_auxiliary_bundle();
    std::shared_ptr< burn_production_bundle > next_bundle();

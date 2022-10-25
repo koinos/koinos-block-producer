@@ -216,7 +216,7 @@ void block_producer::fill_block( protocol::block& b )
       }
    }
 
-   LOG(info) << "Created block containing " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing approximately "
+   LOG(debug) << "Created block containing " << b.transactions_size() << " " << ( b.transactions_size() == 1 ? "transaction" : "transactions" ) << " utilizing approximately "
              << disk_storage_count << "/" << block_resource_limits.disk_storage_limit() << " disk, "
              << network_bandwidth_count << "/" << block_resource_limits.network_bandwidth_limit() << " network, "
              << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
@@ -293,7 +293,9 @@ bool block_producer::submit_block( protocol::block& b )
 
    KOINOS_ASSERT( resp.has_submit_block(), rpc_failure, "unexpected RPC response while submitting block: ${r}", ("r", resp) );
 
-   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() );
+   auto num_transactions = b.transactions_size();
+
+   LOG(info) << "Produced block - Height: " << b.header().height() << ", ID: " << util::converter::to< crypto::multihash >( b.id() ) << " (" << num_transactions << ( num_transactions == 1 ? " transaction)" : " transactions)" );
    return false;
 }
 
