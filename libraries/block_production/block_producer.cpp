@@ -15,6 +15,8 @@
 
 namespace koinos::block_production {
 
+using namespace std::chrono_literals;
+
 block_producer::block_producer(
    crypto::private_key signing_key,
    boost::asio::io_context& main_context,
@@ -245,7 +247,7 @@ bool block_producer::submit_block( protocol::block& b )
    auto block_req = req.mutable_submit_block();
    block_req->mutable_block()->CopyFrom( b );
 
-   auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ) );
+   auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ), 3s );
 
    rpc::chain::chain_response resp;
    resp.ParseFromString( future.get() );
