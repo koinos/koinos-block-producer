@@ -228,7 +228,7 @@ void block_producer::trim_block( protocol::block& b, const std::string& trx_id )
 {
    auto trxs = b.mutable_transactions();
 
-   for ( size_t i = 0; i < trxs->size(); i++ )
+   for ( uint32_t i = 0; i < trxs->size(); i++ )
    {
       if ( trxs->at( i ).id() == trx_id )
       {
