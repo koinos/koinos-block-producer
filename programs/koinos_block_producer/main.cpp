@@ -28,11 +28,14 @@
 #include <koinos/util/random.hpp>
 #include <koinos/util/services.hpp>
 
+#include "git_version.h"
+
 #define FEDERATED_ALGORITHM                "federated"
 #define POW_ALGORITHM                      "pow"
 #define POB_ALGORITHM                      "pob"
 
 #define HELP_OPTION                        "help"
+#define VERSION_OPTION "version"
 #define BASEDIR_OPTION                     "basedir"
 #define AMQP_OPTION                        "amqp"
 #define AMQP_DEFAULT                       "amqp://guest:guest@localhost:5672/"
@@ -66,6 +69,8 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( unable_to_write, service_exception );
 using namespace boost;
 using namespace koinos;
 
+const std::string& version_string();
+
 int main( int argc, char** argv )
 {
    std::atomic< bool > stopped = false;
@@ -82,6 +87,7 @@ int main( int argc, char** argv )
       program_options::options_description options;
       options.add_options()
          (HELP_OPTION                      ",h", "Print this help message and exit.")
+         (VERSION_OPTION                   ",v", "Print version string and exit")
          (BASEDIR_OPTION                   ",d",
             program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
          (AMQP_OPTION                      ",a", program_options::value< std::string >(), "AMQP server URL")
@@ -99,7 +105,7 @@ int main( int argc, char** argv )
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
          (GOSSIP_PRODUCTION_OPTION             , program_options::value< bool        >(), "Use p2p gossip status to determine block production")
          (PRODUCER_ADDRESS_OPTION          ",f", program_options::value< std::string >(), "The beneficiary address used during PoB production")
-         (APPROVE_PROPOSALS_OPTION         ",v", program_options::value< std::vector< std::string > >()->multitoken(), "A list a proposal to approve when producing a block");
+         (APPROVE_PROPOSALS_OPTION         ",k", program_options::value< std::vector< std::string > >()->multitoken(), "A list a proposal to approve when producing a block");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -107,6 +113,14 @@ int main( int argc, char** argv )
       if ( args.count( HELP_OPTION ) )
       {
          std::cout << options << std::endl;
+         return EXIT_SUCCESS;
+      }
+
+      if ( args.count( VERSION_OPTION ) )
+      {
+         const auto& v_str = version_string();
+         std::cout.write( v_str.c_str(), v_str.size() );
+         std::cout << std::endl;
          return EXIT_SUCCESS;
       }
 
@@ -149,6 +163,8 @@ int main( int argc, char** argv )
       auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
 
       initialize_logging( util::service::block_producer, instance_id, log_level, basedir / util::service::block_producer / "logs" );
+
+      LOG(info) << version_string();
 
       KOINOS_ASSERT( rcs_lbound >= 0 && rcs_lbound <= 100, invalid_argument, "resource lower bound out of range [0..100]" );
       KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100, invalid_argument, "resource upper bound out of range [0..100]" );
@@ -421,4 +437,12 @@ int main( int argc, char** argv )
    LOG(info) << "Shutdown gracefully";
 
    return EXIT_FAILURE;
+}
+
+const std::string& version_string()
+{
+   static std::string v_str = "Koinos Block Producer v";
+   v_str += std::to_string( KOINOS_MAJOR_VERSION ) + "." + std::to_string( KOINOS_MINOR_VERSION ) + "." + std::to_string( KOINOS_PATCH_VERSION );
+   v_str += " (" + std::string( KOINOS_GIT_HASH ) + ")";
+   return v_str;
 }
