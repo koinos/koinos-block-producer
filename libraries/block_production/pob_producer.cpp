@@ -342,7 +342,6 @@ std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
    auto difficulty = util::converter::to< uint128_t >( pb->metadata.difficulty() );
    KOINOS_ASSERT( difficulty > 0, invalid_parameter, "expected difficulty greater than 0, was ${x}", ("x", difficulty) );
 
-   uint128_t target = std::numeric_limits< uint128_t >::max() / difficulty;
    auto vhp = difficulty / _auxiliary_data->quanta_per_block_interval;
 
    auto now = std::chrono::system_clock::now();
