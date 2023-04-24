@@ -49,6 +49,7 @@
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
+#define NAME_SERVICE_CONTRACT_ID_OPTION    "name-service-id"
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
@@ -96,6 +97,7 @@ int main( int argc, char** argv )
          (WORK_GROUPS_OPTION               ",w", program_options::value< uint64_t    >(), "The number of worker groups")
          (PRIVATE_KEY_FILE_OPTION          ",p", program_options::value< std::string >(), "The private key file")
          (POW_CONTRACT_ID_OPTION           ",c", program_options::value< std::string >(), "The PoW contract ID")
+         (NAME_SERVICE_CONTRACT_ID_OPTION  ",n", program_options::value< std::string >(), "The name service contract ID")
          (MAX_INCLUSION_ATTEMPTS_OPTION    ",m", program_options::value< uint64_t    >(), "The maximum transaction inclusion attempts per block")
          (RESOURCES_LOWER_BOUND_OPTION     ",z", program_options::value< uint64_t    >(), "The resource utilization lower bound as a percentage")
          (RESOURCES_UPPER_BOUND_OPTION     ",x", program_options::value< uint64_t    >(), "The resource utilization upper bound as a percentage")
@@ -141,15 +143,16 @@ int main( int argc, char** argv )
          block_producer_config = config[ util::service::block_producer ];
       }
 
-      auto amqp_url     = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
-      auto log_level    = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
-      auto instance_id  = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, block_producer_config, global_config );
-      auto algorithm    = util::get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
-      auto jobs         = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, block_producer_config, global_config );
-      auto work_groups  = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
-      auto pk_file      = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
-      auto pow_id       = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
-      auto rcs_lbound   = util::get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
+      auto amqp_url          = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
+      auto log_level         = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
+      auto instance_id       = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, block_producer_config, global_config );
+      auto algorithm         = util::get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
+      auto jobs              = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, block_producer_config, global_config );
+      auto work_groups       = util::get_option< uint64_t    >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
+      auto pk_file           = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
+      auto pow_id            = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto name_service_id   = util::get_option< std::string >( NAME_SERVICE_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+      auto rcs_lbound        = util::get_option< uint64_t    >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto producer_addr     = util::get_option< std::string >( PRODUCER_ADDRESS_OPTION, "", args, block_producer_config, global_config );
       auto rcs_ubound        = util::get_option< uint64_t    >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
       auto max_attempts      = util::get_option< uint64_t    >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
@@ -296,6 +299,7 @@ int main( int argc, char** argv )
          LOG(info) << "Using " << POB_ALGORITHM << " algorithm";
 
          KOINOS_ASSERT( !producer_addr.empty(), invalid_argument, "A producer address must be provided");
+         KOINOS_ASSERT( !name_service_id.empty(), invalid_argument, "A name service contract ID must be provided" );
 
          auto producer_address = util::from_base58< std::string >( producer_addr );
 
@@ -309,6 +313,7 @@ int main( int argc, char** argv )
             max_attempts,
             gossip_production,
             approved_proposals,
+            name_service_id,
             producer_address
          );
 
