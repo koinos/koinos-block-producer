@@ -49,7 +49,7 @@
 #define PRIVATE_KEY_FILE_OPTION            "private-key-file"
 #define PRIVATE_KEY_FILE_DEFAULT           "private.key"
 #define POW_CONTRACT_ID_OPTION             "pow-contract-id"
-#define NAME_SERVICE_CONTRACT_ID_OPTION    "name-service-id"
+#define NAME_SERVICE_CONTRACT_ID_OPTION    "name-service-contract-id"
 #define GOSSIP_PRODUCTION_OPTION           "gossip-production"
 #define GOSSIP_PRODUCTION_DEFAULT          bool( true )
 #define RESOURCES_LOWER_BOUND_OPTION       "resources-lower-bound"
