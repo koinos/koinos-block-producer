@@ -48,8 +48,7 @@ pob_producer::pob_producer(
          gossip_production,
          approved_proposals
       ),
-      _pob_contract_id( pob_contract_id ),
-      _vhp_contract_id( vhp_contract_id ),
+      _name_service_contract_id( name_service_contract_id ),
       _producer_address( producer_address ),
       _production_timer( _production_context )
 {}
@@ -203,6 +202,30 @@ uint32_t pob_producer::get_vhp_decimals()
    return decimals.value();
 }
 
+address_type pob_producer::get_contract_address( std::string name )
+{
+   rpc::chain::chain_request req;
+   auto invoke_system_call = req.mutable_invoke_system_call();
+   invoke_system_call->set_name( "get_contract_address" );
+
+   contracts::name_service::get_address_arguments args;
+   args.set_name( name );
+   invoke_system_call->set_args( args.SerializeAsString() );
+
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
+
+   rpc::chain::chain_response resp;
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
+
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving contract address: ${e}", ("e", resp.error().message()) );
+   KOINOS_ASSERT( resp.has_invoke_system_call(), rpc_failure, "unexpected RPC response on fetching contract name: ${r}", ("r", resp) );
+
+   contracts::name_service::get_address_result result;
+   KOINOS_ASSERT( result.ParseFromString( resp.invoke_system_call().value() ), deserialization_failure, "unable to deserialize ${t}", ("t", result.GetTypeName()) );
+
+   return result.value().address();
+}
+
 contracts::pob::metadata pob_producer::get_metadata()
 {
    rpc::chain::chain_request req;
@@ -297,6 +320,9 @@ void pob_producer::query_auxiliary_data( const boost::system::error_code& ec )
 
 void pob_producer::next_auxiliary_bundle()
 {
+   _pob_contract_id = get_contract_address( "pob" );
+   _vhp_contract_id = get_contract_address( "vhp" );
+
    auto consensus_params = get_consensus_parameters();
    auto vhp_decimals = get_vhp_decimals();
    auto vhp_symbol = get_vhp_symbol();
