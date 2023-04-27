@@ -302,6 +302,7 @@ int main( int argc, char** argv )
          KOINOS_ASSERT( !name_service_id.empty(), invalid_argument, "A name service contract ID must be provided" );
 
          auto producer_address = util::from_base58< std::string >( producer_addr );
+         auto name_service_address = util::from_base58< std::string >( name_service_id );
 
          producer = std::make_unique< block_production::pob_producer >(
             signing_key,
@@ -313,7 +314,7 @@ int main( int argc, char** argv )
             max_attempts,
             gossip_production,
             approved_proposals,
-            name_service_id,
+            name_service_address,
             producer_address
          );
 
