@@ -203,7 +203,7 @@ uint32_t pob_producer::get_vhp_decimals()
    return decimals.value();
 }
 
-address_type pob_producer::get_contract_address( std::string name )
+address_type pob_producer::get_contract_address( const std::string& name )
 {
    rpc::chain::chain_request req;
    auto invoke_system_call = req.mutable_invoke_system_call();
@@ -225,6 +225,24 @@ address_type pob_producer::get_contract_address( std::string name )
    KOINOS_ASSERT( result.ParseFromString( resp.invoke_system_call().value() ), deserialization_failure, "unable to deserialize ${t}", ("t", result.GetTypeName()) );
 
    return result.value().address();
+}
+
+void pob_producer::update_contract_addresses()
+{
+   auto pob_contract_id = get_contract_address( "pob" );
+   auto vhp_contract_id = get_contract_address( "vhp" );
+
+   if ( _pob_contract_id != pob_contract_id )
+   {
+      _pob_contract_id = pob_contract_id;
+      LOG(info) << "PoB contract address: " << util::to_base58( _pob_contract_id );
+   }
+
+   if ( _vhp_contract_id != vhp_contract_id )
+   {
+      _vhp_contract_id = vhp_contract_id;
+      LOG(info) << "VHP contract address: " << util::to_base58( _vhp_contract_id );
+   }
 }
 
 contracts::pob::metadata pob_producer::get_metadata()
@@ -321,11 +339,7 @@ void pob_producer::query_auxiliary_data( const boost::system::error_code& ec )
 
 void pob_producer::next_auxiliary_bundle()
 {
-   _pob_contract_id = get_contract_address( "pob" );
-   _vhp_contract_id = get_contract_address( "vhp" );
-
-   LOG(info) << "POB address: " << util::to_base58( _pob_contract_id );
-   LOG(info) << "VHP address: " << util::to_base58( _vhp_contract_id );
+   update_contract_addresses();
 
    auto consensus_params = get_consensus_parameters();
    auto vhp_decimals = get_vhp_decimals();
@@ -359,6 +373,8 @@ void pob_producer::next_auxiliary_bundle()
 
 std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
 {
+   update_contract_addresses();
+
    auto pb = std::make_shared< burn_production_bundle >();
 
    pb->block        = next_block( _producer_address );

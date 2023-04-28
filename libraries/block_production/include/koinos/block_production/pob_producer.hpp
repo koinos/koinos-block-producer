@@ -85,7 +85,8 @@ private:
    uint64_t get_vhp_balance();
    uint32_t get_vhp_decimals();
    std::string get_vhp_symbol();
-   address_type get_contract_address( std::string name );
+   address_type get_contract_address( const std::string& name );
+   void update_contract_addresses();
    contracts::pob::metadata get_metadata();
    contracts::pob::consensus_parameters get_consensus_parameters();
 
