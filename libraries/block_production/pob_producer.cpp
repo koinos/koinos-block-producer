@@ -14,6 +14,7 @@
 #include <koinos/contracts/pow/pow.pb.h>
 #include <koinos/contracts/token/token.pb.h>
 #include <koinos/contracts/vhp/vhp.pb.h>
+#include <koinos/util/base58.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
