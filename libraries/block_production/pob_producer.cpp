@@ -323,8 +323,8 @@ void pob_producer::next_auxiliary_bundle()
    _pob_contract_id = get_contract_address( "pob" );
    _vhp_contract_id = get_contract_address( "vhp" );
 
-   LOG(info) << "POB address: " << _pob_contract_id;
-   LOG(info) << "VHP address: " << _vhp_contract_id;
+   LOG(info) << "POB address: " << util::to_base58( _pob_contract_id );
+   LOG(info) << "VHP address: " << util::to_base58( _vhp_contract_id );
 
    auto consensus_params = get_consensus_parameters();
    auto vhp_decimals = get_vhp_decimals();
