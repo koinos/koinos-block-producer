@@ -36,7 +36,6 @@ pob_producer::pob_producer(
    uint64_t max_inclusion_attempts,
    bool gossip_production,
    const std::vector< std::string >& approved_proposals,
-   address_type name_service_contract_id,
    address_type producer_address ) :
       block_producer(
          signing_key,
@@ -49,7 +48,6 @@ pob_producer::pob_producer(
          gossip_production,
          approved_proposals
       ),
-      _name_service_contract_id( name_service_contract_id ),
       _producer_address( producer_address ),
       _production_timer( _production_context )
 {}

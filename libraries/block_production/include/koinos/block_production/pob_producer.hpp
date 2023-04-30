@@ -51,7 +51,6 @@ public:
       uint64_t max_inclusion_attempts,
       bool gossip_production,
       const std::vector< std::string >& approved_proposals,
-      address_type name_service_contract_id,
       address_type producer_address
    );
    ~pob_producer();
@@ -66,7 +65,6 @@ private:
    boost::asio::system_timer                     _production_timer;
    address_type                                  _pob_contract_id;
    address_type                                  _vhp_contract_id;
-   address_type                                  _name_service_contract_id;
    const address_type                            _producer_address;
    const uint32_t                                _get_metadata_entry_point = 0xfcf7a68f;
    const uint32_t                                _get_consensus_parameters_entry_point = 0x5fd7ac0f;
