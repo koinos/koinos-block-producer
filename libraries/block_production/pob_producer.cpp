@@ -19,6 +19,7 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/chain/system_call_ids.pb.h>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/services.hpp>
 
@@ -205,7 +206,7 @@ address_type pob_producer::get_contract_address( const std::string& name )
 {
    rpc::chain::chain_request req;
    auto invoke_system_call = req.mutable_invoke_system_call();
-   invoke_system_call->set_name( "get_contract_address" );
+   invoke_system_call->set_id( koinos::chain::get_contract_address );
 
    contracts::name_service::get_address_arguments args;
    args.set_name( name );
