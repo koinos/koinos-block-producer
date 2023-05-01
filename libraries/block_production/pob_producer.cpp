@@ -14,10 +14,12 @@
 #include <koinos/contracts/pow/pow.pb.h>
 #include <koinos/contracts/token/token.pb.h>
 #include <koinos/contracts/vhp/vhp.pb.h>
+#include <koinos/util/base58.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/chain/chain_rpc.pb.h>
+#include <koinos/chain/system_call_ids.pb.h>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/services.hpp>
 
@@ -35,8 +37,6 @@ pob_producer::pob_producer(
    uint64_t max_inclusion_attempts,
    bool gossip_production,
    const std::vector< std::string >& approved_proposals,
-   address_type pob_contract_id,
-   address_type vhp_contract_id,
    address_type producer_address ) :
       block_producer(
          signing_key,
@@ -49,8 +49,6 @@ pob_producer::pob_producer(
          gossip_production,
          approved_proposals
       ),
-      _pob_contract_id( pob_contract_id ),
-      _vhp_contract_id( vhp_contract_id ),
       _producer_address( producer_address ),
       _production_timer( _production_context )
 {}
@@ -204,6 +202,48 @@ uint32_t pob_producer::get_vhp_decimals()
    return decimals.value();
 }
 
+address_type pob_producer::get_contract_address( const std::string& name )
+{
+   rpc::chain::chain_request req;
+   auto invoke_system_call = req.mutable_invoke_system_call();
+   invoke_system_call->set_id( koinos::chain::get_contract_address );
+
+   contracts::name_service::get_address_arguments args;
+   args.set_name( name );
+   invoke_system_call->set_args( args.SerializeAsString() );
+
+   auto future = _rpc_client->rpc( util::service::chain, req.SerializeAsString() );
+
+   rpc::chain::chain_response resp;
+   KOINOS_ASSERT( resp.ParseFromString( future.get() ), deserialization_failure, "unable to deserialize ${t}", ("t", resp.GetTypeName()) );
+
+   KOINOS_ASSERT( !resp.has_error(), rpc_failure, "error while retrieving contract address: ${e}", ("e", resp.error().message()) );
+   KOINOS_ASSERT( resp.has_invoke_system_call(), rpc_failure, "unexpected RPC response on fetching contract name: ${r}", ("r", resp) );
+
+   contracts::name_service::get_address_result result;
+   KOINOS_ASSERT( result.ParseFromString( resp.invoke_system_call().value() ), deserialization_failure, "unable to deserialize ${t}", ("t", result.GetTypeName()) );
+
+   return result.value().address();
+}
+
+void pob_producer::update_contract_addresses()
+{
+   auto pob_contract_id = get_contract_address( "pob" );
+   auto vhp_contract_id = get_contract_address( "vhp" );
+
+   if ( _pob_contract_id != pob_contract_id )
+   {
+      _pob_contract_id = pob_contract_id;
+      LOG(info) << "PoB contract address: " << util::to_base58( _pob_contract_id );
+   }
+
+   if ( _vhp_contract_id != vhp_contract_id )
+   {
+      _vhp_contract_id = vhp_contract_id;
+      LOG(info) << "VHP contract address: " << util::to_base58( _vhp_contract_id );
+   }
+}
+
 contracts::pob::metadata pob_producer::get_metadata()
 {
    rpc::chain::chain_request req;
@@ -298,6 +338,8 @@ void pob_producer::query_auxiliary_data( const boost::system::error_code& ec )
 
 void pob_producer::next_auxiliary_bundle()
 {
+   update_contract_addresses();
+
    auto consensus_params = get_consensus_parameters();
    auto vhp_decimals = get_vhp_decimals();
    auto vhp_symbol = get_vhp_symbol();
@@ -330,6 +372,8 @@ void pob_producer::next_auxiliary_bundle()
 
 std::shared_ptr< burn_production_bundle > pob_producer::next_bundle()
 {
+   update_contract_addresses();
+
    auto pb = std::make_shared< burn_production_bundle >();
 
    pb->block        = next_block( _producer_address );
