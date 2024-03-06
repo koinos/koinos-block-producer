@@ -89,49 +89,30 @@ int main( int argc, char** argv )
   try
   {
     program_options::options_description options;
-    options.add_options()( HELP_OPTION ",h", "Print this help message and exit." )( VERSION_OPTION ",v",
-                                                                                    "Print version string and exit" )(
-      BASEDIR_OPTION ",d",
-      program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ),
-      "Koinos base directory" )( AMQP_OPTION ",a", program_options::value< std::string >(), "AMQP server URL" )(
-      LOG_LEVEL_OPTION ",l",
-      program_options::value< std::string >(),
-      "The log filtering level" )( INSTANCE_ID_OPTION ",i",
-                                   program_options::value< std::string >(),
-                                   "An ID that uniquely identifies the instance" )(
-      ALGORITHM_OPTION ",g",
-      program_options::value< std::string >(),
-      "The consensus algorithm to use" )( JOBS_OPTION ",j",
-                                          program_options::value< uint64_t >(),
-                                          "The number of worker jobs" )( WORK_GROUPS_OPTION ",w",
-                                                                         program_options::value< uint64_t >(),
-                                                                         "The number of worker groups" )(
-      PRIVATE_KEY_FILE_OPTION ",p",
-      program_options::value< std::string >(),
-      "The private key file" )( POW_CONTRACT_ID_OPTION ",c",
-                                program_options::value< std::string >(),
-                                "The PoW contract ID" )( MAX_INCLUSION_ATTEMPTS_OPTION ",m",
-                                                         program_options::value< uint64_t >(),
-                                                         "The maximum transaction inclusion attempts per block" )(
-      RESOURCES_LOWER_BOUND_OPTION ",z",
-      program_options::value< uint64_t >(),
-      "The resource utilization lower bound as a percentage" )(
-      RESOURCES_UPPER_BOUND_OPTION ",x",
-      program_options::value< uint64_t >(),
-      "The resource utilization upper bound as a percentage" )( GOSSIP_PRODUCTION_OPTION,
-                                                                program_options::value< bool >(),
-                                                                "Use p2p gossip status to determine block production" )(
-      PRODUCER_ADDRESS_OPTION ",f",
-      program_options::value< std::string >(),
-      "The beneficiary address used during PoB production" )(
-      APPROVE_PROPOSALS_OPTION ",k",
-      program_options::value< std::vector< std::string > >()->multitoken(),
-      "A list a proposal to approve when producing a block" )( LOG_DIR_OPTION,
-                                                               program_options::value< std::string >(),
-                                                               "The logging directory" )(
-      LOG_COLOR_OPTION,
-      program_options::value< bool >(),
-      "Log color toggle" )( LOG_DATETIME_OPTION, program_options::value< bool >(), "Log datetime on console toggle" );
+
+    // clang-format off
+    options.add_options()
+      ( HELP_OPTION ",h"                  , "Print this help message and exit." )
+      ( VERSION_OPTION ",v"               , "Print version string and exit" )
+      ( BASEDIR_OPTION ",d"               , program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory" )
+      ( APPROVE_PROPOSALS_OPTION ",k"     , program_options::value< std::vector< std::string > >()->multitoken(), "A list a proposal to approve when producing a block" )
+      ( AMQP_OPTION ",a"                  , program_options::value< std::string >(), "AMQP server URL" )
+      ( LOG_LEVEL_OPTION ",l"             , program_options::value< std::string >(), "The log filtering level" )
+      ( INSTANCE_ID_OPTION ",i"           , program_options::value< std::string >(), "An ID that uniquely identifies the instance" )
+      ( ALGORITHM_OPTION ",g"             , program_options::value< std::string >(), "The consensus algorithm to use" )
+      ( JOBS_OPTION ",j"                  , program_options::value< uint64_t >()   , "The number of worker jobs" )
+      ( WORK_GROUPS_OPTION ",w"           , program_options::value< uint64_t >()   , "The number of worker groups" )
+      ( PRIVATE_KEY_FILE_OPTION ",p"      , program_options::value< std::string >(), "The private key file" )
+      ( POW_CONTRACT_ID_OPTION ",c"       , program_options::value< std::string >(), "The PoW contract ID" )
+      ( MAX_INCLUSION_ATTEMPTS_OPTION ",m", program_options::value< uint64_t >()   , "The maximum transaction inclusion attempts per block" )
+      ( RESOURCES_LOWER_BOUND_OPTION ",z" , program_options::value< uint64_t >()   , "The resource utilization lower bound as a percentage" )
+      ( RESOURCES_UPPER_BOUND_OPTION ",x" , program_options::value< uint64_t >()   , "The resource utilization upper bound as a percentage" )
+      ( GOSSIP_PRODUCTION_OPTION          , program_options::value< bool >()       , "Use p2p gossip status to determine block production" )
+      ( PRODUCER_ADDRESS_OPTION ",f"      , program_options::value< std::string >(), "The beneficiary address used during PoB production" )
+      ( LOG_DIR_OPTION                    , program_options::value< std::string >(), "The logging directory" )
+      ( LOG_COLOR_OPTION                  , program_options::value< bool >()       , "Log color toggle" )
+      ( LOG_DATETIME_OPTION               , program_options::value< bool >()       , "Log datetime on console toggle" );
+    // clang-format on
 
     program_options::variables_map args;
     program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -171,67 +152,25 @@ int main( int argc, char** argv )
       block_producer_config = config[ util::service::block_producer ];
     }
 
-    auto amqp_url =
-      util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
-    auto log_level = util::get_option< std::string >( LOG_LEVEL_OPTION,
-                                                      LOG_LEVEL_DEFAULT,
-                                                      args,
-                                                      block_producer_config,
-                                                      global_config );
-    auto log_dir =
-      util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, block_producer_config, global_config );
-    auto log_color =
-      util::get_option< bool >( LOG_COLOR_OPTION, LOG_COLOR_DEFAULT, args, block_producer_config, global_config );
-    auto log_datetime =
-      util::get_option< bool >( LOG_DATETIME_OPTION, LOG_DATETIME_DEFAULT, args, block_producer_config, global_config );
-    auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION,
-                                                        util::random_alphanumeric( 5 ),
-                                                        args,
-                                                        block_producer_config,
-                                                        global_config );
-    auto algorithm   = util::get_option< std::string >( ALGORITHM_OPTION,
-                                                      FEDERATED_ALGORITHM,
-                                                      args,
-                                                      block_producer_config,
-                                                      global_config );
-    auto jobs        = util::get_option< uint64_t >( JOBS_OPTION,
-                                              std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ),
-                                              args,
-                                              block_producer_config,
-                                              global_config );
-    auto work_groups =
-      util::get_option< uint64_t >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
-    auto pk_file = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION,
-                                                    PRIVATE_KEY_FILE_DEFAULT,
-                                                    args,
-                                                    block_producer_config,
-                                                    global_config );
-    auto pow_id =
-      util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
-    auto rcs_lbound = util::get_option< uint64_t >( RESOURCES_LOWER_BOUND_OPTION,
-                                                    RESOURCES_LOWER_BOUND_DEFAULT,
-                                                    args,
-                                                    block_producer_config,
-                                                    global_config );
-    auto producer_addr =
-      util::get_option< std::string >( PRODUCER_ADDRESS_OPTION, "", args, block_producer_config, global_config );
-    auto rcs_ubound        = util::get_option< uint64_t >( RESOURCES_UPPER_BOUND_OPTION,
-                                                    RESOURCES_UPPER_BOUND_DEFAULT,
-                                                    args,
-                                                    block_producer_config,
-                                                    global_config );
-    auto max_attempts      = util::get_option< uint64_t >( MAX_INCLUSION_ATTEMPTS_OPTION,
-                                                      MAX_INCLUSION_ATTEMPTS_DEFAULT,
-                                                      args,
-                                                      block_producer_config,
-                                                      global_config );
-    auto gossip_production = util::get_option< bool >( GOSSIP_PRODUCTION_OPTION,
-                                                       GOSSIP_PRODUCTION_DEFAULT,
-                                                       args,
-                                                       block_producer_config,
-                                                       global_config );
-    auto proposal_ids =
-      util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
+    // clang-format off
+    auto amqp_url          = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, block_producer_config, global_config );
+    auto log_level         = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, block_producer_config, global_config );
+    auto log_dir           = util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, block_producer_config, global_config );
+    auto log_color         = util::get_option< bool >( LOG_COLOR_OPTION, LOG_COLOR_DEFAULT, args, block_producer_config, global_config );
+    auto log_datetime      = util::get_option< bool >( LOG_DATETIME_OPTION, LOG_DATETIME_DEFAULT, args, block_producer_config, global_config );
+    auto instance_id       = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, block_producer_config, global_config );
+    auto algorithm         = util::get_option< std::string >( ALGORITHM_OPTION, FEDERATED_ALGORITHM, args, block_producer_config, global_config );
+    auto jobs              = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, block_producer_config, global_config );
+    auto work_groups       = util::get_option< uint64_t >( WORK_GROUPS_OPTION, jobs, args, block_producer_config, global_config );
+    auto pk_file           = util::get_option< std::string >( PRIVATE_KEY_FILE_OPTION, PRIVATE_KEY_FILE_DEFAULT, args, block_producer_config, global_config );
+    auto pow_id            = util::get_option< std::string >( POW_CONTRACT_ID_OPTION, "", args, block_producer_config, global_config );
+    auto rcs_lbound        = util::get_option< uint64_t >( RESOURCES_LOWER_BOUND_OPTION, RESOURCES_LOWER_BOUND_DEFAULT, args, block_producer_config, global_config );
+    auto producer_addr     = util::get_option< std::string >( PRODUCER_ADDRESS_OPTION, "", args, block_producer_config, global_config );
+    auto rcs_ubound        = util::get_option< uint64_t >( RESOURCES_UPPER_BOUND_OPTION, RESOURCES_UPPER_BOUND_DEFAULT, args, block_producer_config, global_config );
+    auto max_attempts      = util::get_option< uint64_t >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
+    auto gossip_production = util::get_option< bool >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
+    auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
+    // clang-format on
 
     std::optional< std::filesystem::path > logdir_path;
     if( !log_dir.empty() )
