@@ -1,8 +1,11 @@
 #include <koinos/block_production/block_producer.hpp>
 
+#include <ranges>
+
 #include <boost/asio/post.hpp>
 
 #include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/chain/error.pb.h>
 #include <koinos/crypto/merkle_tree.hpp>
 #include <koinos/mq/util.hpp>
 #include <koinos/protocol/protocol.pb.h>
@@ -246,28 +249,10 @@ void block_producer::fill_block( protocol::block& b )
                << compute_bandwidth_count << "/" << block_resource_limits.compute_bandwidth_limit() << " compute";
 }
 
-void block_producer::trim_block( protocol::block& b, const std::string& trx_id )
-{
-  auto trxs = b.mutable_transactions();
-
-  for( uint32_t i = 0; i < trxs->size(); i++ )
-  {
-    if( trxs->at( i ).id() == trx_id )
-    {
-      const auto num_trimmed = trxs->size() - i;
-      LOG( info ) << "Trimming the last " << num_trimmed << " transactions off block";
-      trxs->DeleteSubrange( i, num_trimmed );
-      LOG( info ) << "Modified block now contains " << trxs->size() << " "
-                  << ( trxs->size() == 1 ? "transaction" : "transactions" );
-      return;
-    }
-  }
-}
-
 bool block_producer::submit_block( protocol::block& b )
 {
   rpc::chain::chain_request req;
-  auto block_req = req.mutable_submit_block();
+  auto block_req = req.mutable_propose_block();
   block_req->mutable_block()->CopyFrom( b );
 
   auto future = _rpc_client->rpc( util::service::chain, util::converter::as< std::string >( req ), 3s );
@@ -279,53 +264,65 @@ bool block_producer::submit_block( protocol::block& b )
   {
     LOG( warning ) << "Error while submitting block: " << resp.error().message();
 
-    if( resp.error().data().length() > 0 )
+    for( const auto& detail: resp.error().details() )
     {
-      try
+      if( detail.Is< chain::error_details >() )
       {
-        auto data = nlohmann::json::parse( resp.error().data() );
+        chain::error_details err_details;
+        detail.UnpackTo( &err_details );
 
-        if( data.find( "logs" ) != data.end() )
+        if( err_details.logs().size() )
         {
-          const auto& logs = data[ "logs" ];
+          LOG( warning ) << "System logs:";
 
-          if( logs.size() )
-            LOG( warning ) << "System logs:";
-
-          for( const auto& log: logs )
-            LOG( warning ) << " - " << log.get< std::string >();
+          for( const auto& entry: err_details.logs() )
+          {
+            LOG( warning ) << " - " << entry;
+          }
         }
-
-        if( data.find( "transaction_id" ) != data.end() )
-        {
-          const auto& trx_id = data[ "transaction_id" ];
-          LOG( warning ) << "Error on applying transaction " << trx_id << ": " << resp.error().message();
-
-          trim_block( b, util::from_hex< std::string >( trx_id ) );
-          set_merkle_roots( b, crypto::multicodec::sha2_256 );
-
-          return true;
-        }
-      }
-      catch( const std::exception& e )
-      {
-        LOG( warning ) << "Unable to trim block, " << e.what();
       }
     }
 
     return false;
   }
 
-  KOINOS_ASSERT( resp.has_submit_block(),
+  KOINOS_ASSERT( resp.has_propose_block(),
                  rpc_failure,
                  "unexpected RPC response while submitting block: ${r}",
                  ( "r", resp ) );
 
-  auto num_transactions = b.transactions_size();
+  if( !resp.propose_block().has_receipt() )
+  {
+    const auto& failed_tx_list = resp.propose_block().failed_transaction_indices();
 
-  LOG( info ) << "Produced block - Height: " << b.header().height()
-              << ", ID: " << util::converter::to< crypto::multihash >( b.id() ) << " (" << num_transactions
-              << ( num_transactions == 1 ? " transaction)" : " transactions)" );
+    KOINOS_ASSERT( failed_tx_list.size(),
+                   unexpected_response,
+                   "block proposal without receipt but no failed transactions were reported: ${r}",
+                   ( "r", resp ) );
+
+    auto transactions = b.mutable_transactions();
+
+    LOG( info ) << "Removing " << failed_tx_list.size() << " failed "
+                << ( failed_tx_list.size() == 1 ? "transaction" : "transactions" );
+
+    for( const auto& index: failed_tx_list | std::views::reverse )
+      transactions->DeleteSubrange( index, 1 );
+
+    set_merkle_roots( b, crypto::multicodec::sha2_256 );
+
+    LOG( info ) << "Modified block now contains " << transactions->size() << " "
+                << ( transactions->size() == 1 ? "transaction" : "transactions" );
+
+    return true;
+  }
+
+  const auto& receipt = resp.propose_block().receipt();
+
+  LOG( info ) << "Produced block - Height: " << receipt.height()
+              << ", ID: " << util::converter::to< crypto::multihash >( receipt.id() ) << " ("
+              << receipt.transaction_receipts().size()
+              << ( receipt.transaction_receipts().size() == 1 ? " transaction)" : " transactions)" );
+
   return false;
 }
 
