@@ -150,6 +150,7 @@ void block_producer::fill_block( protocol::block& b )
 {
   rpc::mempool::mempool_request mempool_req;
   mempool_req.mutable_get_pending_transactions()->set_limit( _max_inclusion_attempts );
+  mempool_req.mutable_get_pending_transactions()->set_block_id( b.header().previous() );
 
   rpc::chain::chain_request chain_req;
   chain_req.mutable_get_resource_limits();
