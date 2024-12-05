@@ -400,7 +400,7 @@ int main( int argc, char** argv )
           work_context.run();
         } );
 
-    reqhandler.add_broadcast_handler( "koinos.block.accept",
+    reqhandler.add_broadcast_handler( "koinos.mempool.block_accepted",
                                       [ & ]( const std::string& msg )
                                       {
                                         try
