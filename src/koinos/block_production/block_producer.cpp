@@ -223,9 +223,12 @@ void block_producer::fill_block( protocol::block& b )
     if( transaction.header().rc_limit() == 0 )
       continue;
 
-    auto new_disk_storage_count      = ptransaction.disk_storage_used() + disk_storage_count;
-    auto new_network_bandwidth_count = ptransaction.network_bandwidth_used() + network_bandwidth_count;
-    auto new_compute_bandwidth_count = ptransaction.compute_bandwidth_used() + compute_bandwidth_count;
+    auto new_disk_storage_count =
+      ptransaction.disk_storage_used() + ptransaction.system_disk_storage_used() + disk_storage_count;
+    auto new_network_bandwidth_count =
+      ptransaction.network_bandwidth_used() + ptransaction.system_network_bandwidth_used() + network_bandwidth_count;
+    auto new_compute_bandwidth_count =
+      ptransaction.compute_bandwidth_used() + ptransaction.system_compute_bandwidth_used() + compute_bandwidth_count;
 
     bool disk_storage_within_bounds =
       new_disk_storage_count <= block_resource_limits.disk_storage_limit() * _resources_upper_bound / 100;
