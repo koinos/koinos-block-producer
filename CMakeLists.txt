@@ -12,7 +12,7 @@ FetchContent_MakeAvailable(koinos_cmake)
 include("${koinos_cmake_SOURCE_DIR}/Koinos.cmake")
 
 project(koinos_block_producer
-  VERSION 1.2.1
+  VERSION 1.3.0
   DESCRIPTION "Koinos Block Producer microservice"
   LANGUAGES CXX C)
 
