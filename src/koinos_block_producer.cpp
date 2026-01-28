@@ -64,6 +64,8 @@
 #define MAX_INCLUSION_ATTEMPTS_OPTION  "max-inclusion-attempts"
 #define MAX_INCLUSION_ATTEMPTS_DEFAULT uint64_t( 2'000 )
 #define APPROVE_PROPOSALS_OPTION       "approve-proposals"
+#define POB_PRODUCTION_OPTION          "pob-production"
+#define POB_PRODUCTION_DEFAULT         uint64_t( 100 )
 #define PRODUCER_ADDRESS_OPTION        "producer"
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
@@ -109,6 +111,7 @@ int main( int argc, char** argv )
       ( RESOURCES_UPPER_BOUND_OPTION ",x" , program_options::value< uint64_t >()   , "The resource utilization upper bound as a percentage" )
       ( GOSSIP_PRODUCTION_OPTION          , program_options::value< bool >()       , "Use p2p gossip status to determine block production" )
       ( PRODUCER_ADDRESS_OPTION ",f"      , program_options::value< std::string >(), "The beneficiary address used during PoB production" )
+      ( POB_PRODUCTION_OPTION             , program_options::value< uint64_t >()   , "PoB production percentage (0-100)" )
       ( LOG_DIR_OPTION                    , program_options::value< std::string >(), "The logging directory" )
       ( LOG_COLOR_OPTION                  , program_options::value< bool >()       , "Log color toggle" )
       ( LOG_DATETIME_OPTION               , program_options::value< bool >()       , "Log datetime on console toggle" );
@@ -170,6 +173,7 @@ int main( int argc, char** argv )
     auto max_attempts      = util::get_option< uint64_t >( MAX_INCLUSION_ATTEMPTS_OPTION, MAX_INCLUSION_ATTEMPTS_DEFAULT, args, block_producer_config, global_config );
     auto gossip_production = util::get_option< bool >( GOSSIP_PRODUCTION_OPTION, GOSSIP_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
     auto proposal_ids      = util::get_options< std::string >( APPROVE_PROPOSALS_OPTION, args, block_producer_config, global_config );
+    auto pob_production    = util::get_option< uint64_t >( POB_PRODUCTION_OPTION, POB_PRODUCTION_DEFAULT, args, block_producer_config, global_config );
     // clang-format on
 
     std::optional< std::filesystem::path > logdir_path;
@@ -195,6 +199,9 @@ int main( int argc, char** argv )
     KOINOS_ASSERT( rcs_ubound >= 0 && rcs_ubound <= 100,
                    invalid_argument,
                    "resource upper bound out of range [0..100]" );
+    KOINOS_ASSERT( pob_production >= 0 && pob_production <= 100,
+                   invalid_argument,
+                   "PoB production percentage out of range [0..100]" );
 
     KOINOS_ASSERT( jobs > 1, invalid_argument, "jobs must be greater than 1" );
 
@@ -360,6 +367,7 @@ int main( int argc, char** argv )
                                                                      rcs_lbound,
                                                                      rcs_ubound,
                                                                      max_attempts,
+                                                                     pob_production,
                                                                      gossip_production,
                                                                      approved_proposals,
                                                                      producer_address );

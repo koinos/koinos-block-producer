@@ -34,6 +34,7 @@ pob_producer::pob_producer( crypto::private_key signing_key,
                             uint64_t resources_lower_bound,
                             uint64_t resources_upper_bound,
                             uint64_t max_inclusion_attempts,
+                            uint64_t pob_production,
                             bool gossip_production,
                             const std::vector< std::string >& approved_proposals,
                             address_type producer_address ):
@@ -47,6 +48,7 @@ pob_producer::pob_producer( crypto::private_key signing_key,
                     gossip_production,
                     approved_proposals ),
     _producer_address( producer_address ),
+    _pob_production( pob_production ),
     _production_timer( _production_context )
 {}
 
@@ -365,7 +367,14 @@ contracts::pob::consensus_parameters pob_producer::get_consensus_parameters()
 
 bool pob_producer::difficulty_met( const crypto::multihash& hash, uint64_t vhp_balance, uint128_t target )
 {
-  if( ( util::converter::to< uint256_t >( hash.digest() ) >> 128 ) / vhp_balance < target )
+  // Adjust vhp_balance based on pob_production (0-100%)
+  // pob_production is a percentage, so we multiply vhp_balance by (pob_production / 100)
+  uint64_t adjusted_vhp_balance = ( vhp_balance * _pob_production ) / 100;
+
+  if( adjusted_vhp_balance == 0 )
+    return false;
+
+  if( ( util::converter::to< uint256_t >( hash.digest() ) >> 128 ) / adjusted_vhp_balance < target )
     return true;
 
   return false;

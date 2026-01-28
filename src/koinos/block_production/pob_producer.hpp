@@ -50,6 +50,7 @@ public:
                 uint64_t resources_lower_bound,
                 uint64_t resources_upper_bound,
                 uint64_t max_inclusion_attempts,
+                uint64_t pob_production,
                 bool gossip_production,
                 const std::vector< std::string >& approved_proposals,
                 address_type producer_address );
@@ -65,6 +66,7 @@ private:
   boost::asio::system_timer _production_timer;
   address_type _pob_contract_id;
   address_type _vhp_contract_id;
+  const uint64_t _pob_production;
   const address_type _producer_address;
   const uint32_t _get_metadata_entry_point             = 0xfcf7a68f;
   const uint32_t _get_consensus_parameters_entry_point = 0x5fd7ac0f;
